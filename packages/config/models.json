@@ -105,10 +105,10 @@
         "cachedInputPerMTok": 0.31
       }
     },
-    "openai:gpt-4.1-mini": {
+    "openai:gpt-5.6-luna": {
       "provider": "openai",
-      "providerModelId": "gpt-4.1-mini",
-      "displayName": "GPT-4.1 mini",
+      "providerModelId": "gpt-5.6-luna",
+      "displayName": "GPT-5.6 Luna",
       "contextWindow": 1047576,
       "maxOutputTokens": 32768,
       "capabilities": {
@@ -121,7 +121,8 @@
         "inputPerMTok": 0.4,
         "outputPerMTok": 1.6,
         "cachedInputPerMTok": 0.1
-      }
+      },
+      "$unverifiedPricing": "Rates, contextWindow and maxOutputTokens are inherited from gpt-4.1-mini and have NOT been checked for this model. OpenAI cost and truncation figures are wrong until corrected."
     }
   },
   "embeddingModels": {
@@ -152,7 +153,7 @@
     "fallbackChain": [
       "anthropic:claude-haiku-4-5",
       "google:gemini-2.5-flash",
-      "openai:gpt-4.1-mini"
+      "openai:gpt-5.6-luna"
     ],
     "retry": {
       "maxAttempts": 3,
