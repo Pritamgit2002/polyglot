@@ -276,21 +276,71 @@ cannot pass as a pass.
 
 ## Pricing sources
 
-⚠️ **Verify these against the live pricing pages before submitting** — the
-numbers in `packages/config/models.json` were taken from the vendors' published
-rates and vendors change them without notice. Record the URL and the date you
-read each one here:
+**All figures verified 2026-09-18.** Prices are USD per million tokens. Token
+limits were read from each provider's own API rather than its docs, because the
+API is the thing that will actually reject your request.
 
-| Model                           | Input / Output per MTok                             | Source                                            | Read on   |
-| ------------------------------- | --------------------------------------------------- | ------------------------------------------------- | --------- |
-| `anthropic:claude-sonnet-4-6`   | $3.00 / $15.00 (cached in $0.30, cache write $3.75) | https://www.anthropic.com/pricing                 | _fill in_ |
-| `anthropic:claude-haiku-4-5`    | $1.00 / $5.00                                       | https://www.anthropic.com/pricing                 | _fill in_ |
-| `google:gemini-2.5-flash`       | $0.30 / $2.50                                       | https://ai.google.dev/gemini-api/docs/pricing     | _fill in_ |
-| `google:gemini-2.5-pro`         | $1.25 / $10.00                                      | https://ai.google.dev/gemini-api/docs/pricing     | _fill in_ |
-| `openai:gpt-5.6-luna`           | $0.40 / $1.60                                       | https://openai.com/api/pricing/                   | _fill in_ |
-| `groq:llama-3.3-70b-versatile`  | $0.59 / $0.79                                       | https://groq.com/pricing/                         | _fill in_ |
-| `deepseek:deepseek-chat`        | $0.27 / $1.10                                       | https://api-docs.deepseek.com/quick_start/pricing | _fill in_ |
-| `openai:text-embedding-3-small` | $0.02                                               | https://openai.com/api/pricing/                   | _fill in_ |
+| Model | Input | Output | Cached in | Cache write | Context | Max out |
+|---|---|---|---|---|---|---|
+| `anthropic:claude-sonnet-4-6` | $3.00 | $15.00 | $0.30 | $3.75 | 1,000,000 | 128,000 |
+| `anthropic:claude-haiku-4-5` | $1.00 | $5.00 | $0.10 | $1.25 | 200,000 | 64,000 |
+| `google:gemini-2.5-flash` | $0.30 | $2.50 | $0.03 | — | 1,048,576 | 65,536 |
+| `google:gemini-2.5-pro` | $1.25 | $10.00 | $0.125 | — | 1,048,576 | 65,536 |
+| `openai:gpt-5.6-luna` | $0.20 | $1.20 | $0.02 | $0.25 | 1,050,000 | 128,000 |
 
-Because pricing lives in config, correcting any of these is a one-line edit with
-no rebuild.
+Sources:
+
+- Anthropic — <https://docs.claude.com/en/docs/about-claude/pricing> and
+  <https://docs.claude.com/en/docs/about-claude/models/overview>. Max output
+  came from the API's own limit error (`max_tokens: 200000 > 128000, which is
+  the maximum allowed…`), which is more reliable than the docs: Sonnet 4.6 is
+  no longer listed in the featured comparison table at all.
+- Gemini — <https://ai.google.dev/gemini-api/docs/pricing>; limits from
+  `GET /v1beta/models`.
+- OpenAI — <https://platform.openai.com/docs/models/gpt-5.6-luna>.
+
+### What was wrong before verifying
+
+Worth recording, because the errors were not where I expected. **Every headline
+input/output price I had was already correct.** What was wrong were the details
+nobody checks:
+
+| Field | Had | Actual |
+|---|---|---|
+| `claude-sonnet-4-6` context window | 200,000 | **1,000,000** |
+| `claude-sonnet-4-6` max output | 64,000 | **128,000** |
+| `claude-haiku-4-5` max output | 32,000 | **64,000** |
+| `gemini-2.5-flash` cached input | $0.075 | **$0.03** (2.5x over-charged) |
+| `gemini-2.5-pro` cached input | $0.31 | **$0.125** (2.5x over-charged) |
+| `gemini-2.5-pro` long-context tier | absent | **2x input / 1.5x output above 200K** |
+
+The context-window figures matter beyond cost: `fitToContextWindow` truncates
+against them, so a wrong window silently discards conversation history that
+would have fit. Sonnet 4.6 was throwing away 80% of its usable context.
+
+### Long-context tiers — all three differ
+
+| Provider | Behaviour |
+|---|---|
+| **OpenAI** (`gpt-5.6-luna`) | 2x input, 1.5x output on the **whole request** above **272K** input tokens. |
+| **Gemini** (`2.5-pro`) | Separate rate table above **200K**: $1.25→$2.50 in, $10→$15 out, $0.125→$0.25 cached. Same shape as a 2x/1.5x multiplier, so it is modelled that way. `2.5-flash` has no tier. |
+| **Anthropic** | **No surcharge at all.** 4.6 and later include the full 1M window at standard pricing — *"a 900k-token request is billed at the same per-token rate as a 9k-token request."* |
+
+So the naive assumption — "long prompts cost more everywhere" — is wrong on one
+of the three, and the two that do charge use different thresholds *and*
+different mechanisms. `pricing.longContext` is optional precisely so Anthropic
+can decline to have one.
+
+### Notes on what is deliberately not modelled
+
+- **Anthropic cache-write TTL.** `cacheWritePerMTok` is the 5-minute rate. The
+  1-hour TTL costs more ($6/MTok on Sonnet 4.6 vs $3.75). We never request the
+  1h TTL, so the second rate is not in the schema.
+- **Gemini cache storage.** Charged per token *per hour* held, not per request.
+  It is a storage cost, not a request cost, so it does not belong in a
+  per-request cost calculation.
+- **Modality-specific input rates.** Gemini charges $1.00/MTok for audio input
+  against $0.30 for text. We only send text and images, so one input rate is
+  enough — this would need a per-modality table to support audio.
+- **Batch, Flex and Priority tiers.** All three vendors offer cheaper batch and
+  pricier fast lanes. We always use the standard tier.
