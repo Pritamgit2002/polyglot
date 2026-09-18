@@ -7,12 +7,30 @@ import type { Usage } from './types.js';
  * loudly on startup, not silently produce a $0.00 cost line six hours later.
  */
 
+/**
+ * Long-context surcharge.
+ *
+ * Every major provider now charges more once a prompt crosses a threshold, and
+ * they express it differently — OpenAI as a multiplier on the WHOLE request
+ * past 272K input tokens, Gemini and Anthropic as a separate rate table past
+ * their own thresholds. A single flat rate per model silently under-reports the
+ * cost of exactly the requests that cost the most, which is a bad place to be
+ * wrong when the point of the module is cost tracking.
+ */
+const LongContextSchema = z.object({
+  /** Applies when inputTokens EXCEEDS this value. */
+  thresholdInputTokens: z.number().int().positive(),
+  inputMultiplier: z.number().positive().default(1),
+  outputMultiplier: z.number().positive().default(1),
+});
+
 const PricingSchema = z.object({
   inputPerMTok: z.number().nonnegative(),
   outputPerMTok: z.number().nonnegative(),
   cachedInputPerMTok: z.number().nonnegative().optional(),
   cacheWritePerMTok: z.number().nonnegative().optional(),
   reasoningPerMTok: z.number().nonnegative().optional(),
+  longContext: LongContextSchema.optional(),
 });
 
 const CapabilitiesSchema = z.object({
@@ -39,6 +57,15 @@ const ModelConfigSchema = z.object({
   maxOutputTokens: z.number().int().positive(),
   capabilities: CapabilitiesSchema,
   pricing: PricingSchema,
+  /**
+   * Per-model quirks, merged OVER the provider's `extra`.
+   *
+   * Quirks are not always provider-wide. OpenAI's newer models reject
+   * `max_tokens` and require `max_completion_tokens`, while older ones accept
+   * either — so the knob has to live on the model, not the vendor, or one
+   * fleet breaks whichever way you set it.
+   */
+  extra: z.record(z.unknown()).optional(),
 });
 
 const EmbeddingModelConfigSchema = z.object({
@@ -166,13 +193,21 @@ export function computeCostUsd(usage: Usage, pricing: Pricing): number {
   const written = usage.cacheWriteTokens ?? 0;
   const uncachedInput = Math.max(0, usage.inputTokens - cached - written);
 
-  const inputCost = (uncachedInput / 1_000_000) * pricing.inputPerMTok;
-  const cachedCost = (cached / 1_000_000) * (pricing.cachedInputPerMTok ?? pricing.inputPerMTok);
-  const writeCost = (written / 1_000_000) * (pricing.cacheWritePerMTok ?? pricing.inputPerMTok);
+  // The surcharge applies to the FULL request once the threshold is crossed,
+  // not just to the tokens above it — that is how OpenAI words it, and pricing
+  // the excess only would under-report a 300K-token prompt substantially.
+  const long = pricing.longContext;
+  const overThreshold = long !== undefined && usage.inputTokens > long.thresholdInputTokens;
+  const inMult = overThreshold ? long!.inputMultiplier : 1;
+  const outMult = overThreshold ? long!.outputMultiplier : 1;
+
+  const inputCost = (uncachedInput / 1_000_000) * pricing.inputPerMTok * inMult;
+  const cachedCost = (cached / 1_000_000) * (pricing.cachedInputPerMTok ?? pricing.inputPerMTok) * inMult;
+  const writeCost = (written / 1_000_000) * (pricing.cacheWritePerMTok ?? pricing.inputPerMTok) * inMult;
   // Reasoning tokens are billed at the output rate unless the vendor prices
   // them separately; they are already included in outputTokens for every
   // provider we implement, so we do NOT add them again.
-  const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMTok;
+  const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMTok * outMult;
 
   return round6(inputCost + cachedCost + writeCost + outputCost);
 }

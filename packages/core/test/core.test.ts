@@ -29,6 +29,45 @@ describe('cost', () => {
   });
 });
 
+describe('long-context pricing', () => {
+  // gpt-5.6-luna, read from the OpenAI model page on 2026-09-18.
+  const luna = {
+    inputPerMTok: 0.2,
+    outputPerMTok: 1.2,
+    cachedInputPerMTok: 0.02,
+    cacheWritePerMTok: 0.25,
+    longContext: { thresholdInputTokens: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  };
+
+  it('uses base rates below the threshold', () => {
+    expect(computeCostUsd({ inputTokens: 100_000, outputTokens: 10_000 }, luna)).toBeCloseTo(0.02 + 0.012, 6);
+  });
+
+  it('does not surcharge exactly AT the threshold — the rule is "exceeds"', () => {
+    const at = computeCostUsd({ inputTokens: 272_000, outputTokens: 1_000 }, luna);
+    expect(at).toBeCloseTo((272_000 / 1e6) * 0.2 + (1_000 / 1e6) * 1.2, 6);
+  });
+
+  it('surcharges the WHOLE request once the threshold is exceeded', () => {
+    const over = computeCostUsd({ inputTokens: 300_000, outputTokens: 10_000 }, luna);
+    // 2x on all input, 1.5x on all output — not just the excess.
+    expect(over).toBeCloseTo((300_000 / 1e6) * 0.2 * 2 + (10_000 / 1e6) * 1.2 * 1.5, 6);
+  });
+
+  it('applies the input multiplier to cached and cache-write tokens too', () => {
+    const cost = computeCostUsd(
+      { inputTokens: 300_000, outputTokens: 0, cachedInputTokens: 300_000 },
+      luna,
+    );
+    expect(cost).toBeCloseTo((300_000 / 1e6) * 0.02 * 2, 6);
+  });
+
+  it('is a no-op for a model with no long-context tier', () => {
+    const flat = { inputPerMTok: 3, outputPerMTok: 15 };
+    expect(computeCostUsd({ inputTokens: 500_000, outputTokens: 1_000 }, flat)).toBeCloseTo(1.5 + 0.015, 6);
+  });
+});
+
 describe('context fitting', () => {
   const model = {
     provider: 'anthropic',
