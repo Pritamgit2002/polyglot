@@ -254,7 +254,11 @@ CI test that fails if any new table is created without a policy.
   tenant header is forgeable, as stated above.
 - **Rate limiting and quota per tenant.** There is a per-request cost ceiling
   but no per-tenant budget, so one tenant can exhaust a shared provider quota.
-- **Audit completeness.** `tenant_access_log` is written but nothing reads it.
+- **Audit completeness.** `tenant_access_log` is written on every tenant-scoped
+  request and is tamper-resistant (the app role has `INSERT` only), but nothing
+  *reads* it — there is no alerting, no anomaly detection, and no retention
+  policy. It is also a synchronous row per request on the hot path, which
+  belongs on an async sink before this sees real traffic.
 - **Egress control.** `get_weather` calls a fixed public API, but there is no
   general allowlist preventing a future tool from reaching an internal address.
 - **Encryption at rest, key rotation, secret manager.** `.env` only.

@@ -158,7 +158,31 @@ over-long prompt is the case where only the message text distinguishes it).
 sends `2.5s` / `1m30s`, some send an HTTP date, some send bare seconds.
 `retryAfterFromHeaders()` parses all four forms.
 
-## 10. Miscellaneous
+## 10. Structured output — three unrelated mechanisms
+
+| Provider | Mechanism |
+|---|---|
+| OpenAI-compatible | `response_format: { type: 'json_schema', json_schema: { schema, strict: true } }` |
+| Gemini | `generationConfig.responseMimeType = 'application/json'` **plus** `generationConfig.responseSchema` (the same OpenAPI subset, so it needs the same sanitizer as tool schemas) |
+| **Anthropic** | **No equivalent exists.** The supported route is to declare a single tool whose `input_schema` *is* the target schema and force it with `tool_choice: { type: 'tool', name: ... }` |
+
+**Reconciled:** one `responseSchema` field on `CompletionRequest`. The Anthropic
+adapter does the tool-forcing and then **unwraps the forced call back into a
+text block**, so a caller receives JSON-as-text on all three. Streaming is
+normalized the same way: Anthropic's `input_json_delta` fragments are emitted as
+`text_delta`, so partial JSON renders identically everywhere and the synthetic
+tool never leaks upward as a `tool_use` event.
+
+Two consequences worth stating, because they are real limitations rather than
+oversights:
+
+- On Anthropic, structured output and caller-supplied tools are **mutually
+  exclusive** — forcing `tool_choice` at one tool necessarily excludes the rest.
+- Only Gemini and OpenAI enforce the schema server-side. Anthropic's tool
+  forcing guarantees a *call*, not a *valid* one, so a validate-then-retry loop
+  is still required for parity. That loop is **not built** — see the README.
+
+## 11. Miscellaneous
 
 - **`max_tokens` is required by Anthropic** and optional everywhere else. The
   adapter defaults it rather than sending `undefined`, which is a 400.

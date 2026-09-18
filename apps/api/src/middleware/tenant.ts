@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq, or } from 'drizzle-orm';
-import { ownerDb, tenants } from '@polyglot/db';
+import { appDb, ownerDb, tenantAccessLog, tenants } from '@polyglot/db';
 
 /**
  * Where the tenant identifier comes from, and what stops a caller forging it.
@@ -64,5 +64,32 @@ export function registerTenantGuard(app: FastifyInstance): void {
 
     req.tenantId = tenant.id;
     req.tenantSlug = tenant.slug;
+  });
+
+  /**
+   * Append-only audit trail of every tenant context the API opened.
+   *
+   * This is the answer to Section 4's "how would you know, in production, if it
+   * had ever leaked?" — without it, a cross-tenant read leaves no trace to
+   * correlate against. The app role has INSERT and nothing else on this table,
+   * so a compromised request cannot read other tenants' entries or erase its
+   * own.
+   *
+   * Fire-and-forget: an audit write must never fail or delay the response the
+   * user is waiting on. In production this belongs on an async sink rather than
+   * a row per request on the hot path — noted in docs/DESIGN.md.
+   */
+  app.addHook('onResponse', async (req) => {
+    if (!req.tenantId) return;
+
+    void appDb
+      .insert(tenantAccessLog)
+      .values({
+        tenantId: req.tenantId,
+        route: req.routeOptions?.url ?? req.url.split('?')[0]!,
+        method: req.method,
+        requestId: String(req.id),
+      })
+      .catch((err) => req.log.warn({ err }, 'tenant access log write failed'));
   });
 }

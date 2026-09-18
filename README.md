@@ -92,10 +92,13 @@ would be the copy-paste anti-pattern the brief warns about.
 
 ### Cut deliberately
 
-- **Optional extras.** None of Section 6 is built. Structured output has adapter
-  support (`responseSchema` maps to Anthropic tool-forcing, Gemini's
-  `responseSchema` and OpenAI's `json_schema`) but no UI or validation-retry
-  loop.
+- **Optional extras.** None of Section 6 is finished. Structured output is the
+  closest: `responseSchema` is implemented and tested in all three adapters
+  (Anthropic via forced tool-calling, Gemini via `responseSchema`, OpenAI via
+  `json_schema`), and normalized so every provider returns JSON as text. What is
+  **missing** is the rest of the feature — no UI, and no validate-then-retry
+  loop, which Anthropic needs because tool forcing guarantees a call but not a
+  schema-valid one. Do not count this as a delivered extra.
 - **Background ingestion.** Uploads are processed synchronously in the request.
   The `status` column exists precisely so this can become a queue without a
   schema change.
