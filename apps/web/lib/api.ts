@@ -170,6 +170,7 @@ export interface RequestLog {
   finishReason: string;
   retryCount: number;
   fallbackFrom: string | null;
+  errorKind: string | null;
   createdAt: string;
 }
 

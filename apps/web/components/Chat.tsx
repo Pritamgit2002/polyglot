@@ -14,6 +14,8 @@ import {
 import MetricsPanel from './MetricsPanel';
 import Citations, { type Citation } from './Citations';
 import RetrievalSettings from './RetrievalSettings';
+import ThemeToggle from './ThemeToggle';
+import Markdown from './Markdown';
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -26,6 +28,15 @@ interface Turn {
 }
 
 const TENANTS = ['acme', 'globex'];
+const COMPOSER_MAX_PX = 200;
+const ALL_TOOLS = ['calculator', 'get_weather', 'search_documents'];
+const SUGGESTIONS = [
+  'What is 1847 × 23? Use the calculator.',
+  'What is the weather in Reykjavik right now?',
+  'Summarise my uploaded documents.',
+];
+
+type Tab = 'sources' | 'usage' | 'retrieval';
 
 export default function Chat() {
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -33,7 +44,7 @@ export default function Chat() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [collectionId, setCollectionId] = useState<string>('');
+  const [collectionId, setCollectionId] = useState('');
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -41,9 +52,13 @@ export default function Chat() {
   const [streaming, setStreaming] = useState(false);
   const [tenant, setTenantState] = useState('acme');
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('usage');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   // ---- bootstrap ----------------------------------------------------------
   useEffect(() => {
@@ -52,8 +67,7 @@ export default function Chat() {
       .models()
       .then((r) => {
         setModels(r.models);
-        const firstConfigured = r.models.find((m) => m.configured);
-        setModelId(firstConfigured?.id ?? r.defaults.chatModel);
+        setModelId(r.models.find((m) => m.configured)?.id ?? r.defaults.chatModel);
       })
       .catch((e) => setError(String(e.message)));
   }, []);
@@ -74,25 +88,38 @@ export default function Chat() {
   }, [tenant, refreshTenantData]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns]);
 
-  // ---- conversation loading ----------------------------------------------
+  // Grow the composer with its content, up to a cap.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+
+    // Collapse to zero BEFORE measuring. scrollHeight is always >=
+    // clientHeight, so measuring while the element still carries its previous
+    // inline height reports that height straight back — and writing it again
+    // ratchets the box open permanently. One bad frame and an empty composer
+    // is stuck at the maximum forever, because every later pass measures the
+    // value it just wrote. Starting from 0 makes the measurement depend only
+    // on the content.
+    ta.style.height = '0px';
+    ta.style.height = `${Math.min(ta.scrollHeight, COMPOSER_MAX_PX)}px`;
+  }, [input]);
+
+  // ---- conversations ------------------------------------------------------
   async function openConversation(id: string) {
     setConversationId(id);
     setCitations([]);
     const detail = await api.conversation(id);
-    // Rebuild the visible transcript from persisted provider-agnostic blocks —
-    // this is why conversations survive a reload and a provider switch.
+    // Rebuilt from persisted provider-agnostic blocks — which is why a
+    // conversation survives a reload AND a provider switch.
     setTurns(
       detail.messages
         .filter((m) => m.role !== 'tool')
         .map((m) => ({
           role: m.role === 'assistant' ? 'assistant' : 'user',
-          text: m.content
-            .filter((b) => b.type === 'text')
-            .map((b) => b.text ?? '')
-            .join(''),
+          text: m.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join(''),
           modelId: m.modelId ?? undefined,
           tools: m.content
             .filter((b) => b.type === 'tool_use')
@@ -110,10 +137,17 @@ export default function Chat() {
     return created.id;
   }
 
+  function newConversation() {
+    setConversationId(null);
+    setTurns([]);
+    setCitations([]);
+    setError(null);
+  }
+
   // ---- send ---------------------------------------------------------------
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming) return;
+  async function send(text?: string) {
+    const body = (text ?? input).trim();
+    if (!body || streaming) return;
 
     setError(null);
     setInput('');
@@ -125,7 +159,7 @@ export default function Chat() {
 
     setTurns((t) => [
       ...t,
-      { role: 'user', text, tools: [], notices: [] },
+      { role: 'user', text: body, tools: [], notices: [] },
       { role: 'assistant', text: '', modelId, tools: [], notices: [] },
     ]);
 
@@ -141,9 +175,9 @@ export default function Chat() {
         {
           conversationId: convId,
           modelId,
-          content: [{ type: 'text', text }],
+          content: [{ type: 'text', text: body }],
           ...(collectionId ? { collectionId } : {}),
-          ...(toolsEnabled ? { enabledTools: ['calculator', 'get_weather', 'search_documents'] } : {}),
+          enabledTools: toolsEnabled ? ALL_TOOLS : [],
         },
         controller.signal,
         (event) => {
@@ -163,6 +197,7 @@ export default function Chat() {
               break;
             case 'citations':
               setCitations(event.chunks);
+              setTab('sources');
               break;
             case 'notice':
               patch((t) => ({ ...t, notices: [...t.notices, event] }));
@@ -195,11 +230,28 @@ export default function Chat() {
 
   async function upload(file: File) {
     if (!collectionId) {
-      setError('Create or select a collection first.');
+      setError('Create or select a collection before uploading.');
       return;
     }
+    setUploading(true);
     try {
       await api.uploadDocument(collectionId, file);
+      setError(null);
+    } catch (e) {
+      setError(String((e as Error).message));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function createCollection() {
+    const name = prompt('Collection name');
+    if (!name) return;
+    try {
+      const created = await api.createCollection(name);
+      setCollections((c) => [created, ...c]);
+      setCollectionId(created.id);
+      setTab('retrieval');
     } catch (e) {
       setError(String((e as Error).message));
     }
@@ -207,174 +259,248 @@ export default function Chat() {
 
   const selected = models.find((m) => m.id === modelId);
   const selectedCollection = collections.find((c) => c.id === collectionId);
+  const toolsSupported = selected?.capabilities.tools ?? true;
 
   return (
-    <div className="layout">
-      <div className="main">
-        <div className="toolbar">
-          <span className="brand">Polyglot</span>
-
-          <select
-            value={tenant}
-            onChange={(e) => {
-              setTenant(e.target.value);
-              setTenantState(e.target.value);
-              setConversationId(null);
-              setTurns([]);
-              setCitations([]);
-            }}
-            title="Tenant — every request carries this, and the database enforces it"
-          >
-            {TENANTS.map((t) => (
-              <option key={t} value={t}>
-                tenant: {t}
-              </option>
-            ))}
-          </select>
-
-          <select value={modelId} onChange={(e) => setModelId(e.target.value)}>
-            {models.map((m) => (
-              <option key={m.id} value={m.id} disabled={!m.configured}>
-                {m.displayName}
-                {m.configured ? '' : ' — no API key'}
-              </option>
-            ))}
-          </select>
-
-          <select value={collectionId} onChange={(e) => setCollectionId(e.target.value)}>
-            <option value="">no documents</option>
-            {collections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          <button
-            onClick={async () => {
-              const name = prompt('Collection name');
-              if (!name) return;
-              const created = await api.createCollection(name);
-              setCollections((c) => [created, ...c]);
-              setCollectionId(created.id);
-            }}
-          >
-            + collection
-          </button>
-
-          <label className="chip">
-            <input
-              type="checkbox"
-              checked={toolsEnabled}
-              onChange={(e) => setToolsEnabled(e.target.checked)}
-              disabled={!selected?.capabilities.tools}
-            />
-            tools
-            {selected && !selected.capabilities.tools ? ' (unsupported)' : ''}
-          </label>
-
-          <input
-            type="file"
-            accept=".pdf,.txt,.md,.markdown"
-            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
-            style={{ maxWidth: 190 }}
-          />
-
-          <div className="spacer" />
-
-          <select
-            value={conversationId ?? ''}
-            onChange={(e) => (e.target.value ? openConversation(e.target.value) : (setConversationId(null), setTurns([])))}
-          >
-            <option value="">new conversation</option>
-            {conversations.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-              </option>
-            ))}
-          </select>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <span className="mark">P</span>
+          Polyglot
         </div>
 
-        {error && (
-          <div style={{ padding: '8px 16px', color: 'var(--error)' }}>{error}</div>
-        )}
+        <div className="divider" />
 
-        <div className="messages">
-          {turns.map((turn, i) => (
-            <div key={i} className={`msg ${turn.role}`}>
-              <div className="who">
-                {turn.role}
-                {turn.modelId ? ` · ${turn.modelId}` : ''}
-              </div>
+        <select
+          value={tenant}
+          onChange={(e) => {
+            setTenant(e.target.value);
+            setTenantState(e.target.value);
+            newConversation();
+          }}
+          title="Tenant — every request carries this, and Postgres enforces it"
+        >
+          {TENANTS.map((t) => (
+            <option key={t} value={t}>
+              ◆ {t}
+            </option>
+          ))}
+        </select>
 
-              {turn.notices.map((n, j) => (
-                <div key={j} className={`chip ${n.level === 'warn' ? 'warn' : ''}`} style={{ marginBottom: 6 }}>
-                  {n.message}
-                </div>
-              ))}
+        <select value={modelId} onChange={(e) => setModelId(e.target.value)} title="Switchable between messages">
+          {models.map((m) => (
+            <option key={m.id} value={m.id} disabled={!m.configured}>
+              {m.displayName}
+              {m.configured ? '' : ' — no key'}
+            </option>
+          ))}
+        </select>
 
-              {turn.tools.map((t, j) => (
-                <div key={j} className="tool">
-                  <span className="name">{t.name}</span>{' '}
-                  <span className={`chip ${t.status === 'error' ? 'error' : t.status === 'done' ? 'ok' : ''}`}>{t.status}</span>
-                  {t.input ? <pre>{JSON.stringify(t.input)}</pre> : null}
-                  {t.output ? <pre>{t.output.slice(0, 400)}</pre> : null}
-                </div>
-              ))}
+        <div className="grow" />
 
-              <div className="body">{turn.text}</div>
+        <select value={conversationId ?? ''} onChange={(e) => (e.target.value ? openConversation(e.target.value) : newConversation())}>
+          <option value="">＋ New conversation</option>
+          {conversations.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </select>
 
-              {turn.error && <div className="chip error" style={{ marginTop: 8 }}>{turn.error}</div>}
+        <button className="btn btn-icon only-narrow" onClick={() => setSidebarOpen((o) => !o)} aria-label="Toggle panel">
+          ☰
+        </button>
 
-              {turn.metrics && (
-                <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <span className="chip">{turn.metrics.provider}</span>
-                  <span className="chip">ttft {turn.metrics.ttftMs ?? '—'} ms</span>
-                  <span className="chip">total {turn.metrics.totalMs} ms</span>
-                  <span className="chip">
-                    {turn.metrics.usage.inputTokens} in / {turn.metrics.usage.outputTokens} out
-                  </span>
-                  <span className="chip">${turn.metrics.costUsd.toFixed(6)}</span>
-                  {turn.metrics.retryCount > 0 && <span className="chip warn">{turn.metrics.retryCount} retries</span>}
-                  {turn.metrics.fallbackFrom && <span className="chip warn">fell back from {turn.metrics.fallbackFrom}</span>}
+        <ThemeToggle />
+      </header>
+
+      <div className="body">
+        <main className="chat">
+          {error && (
+            <div style={{ padding: '10px 20px 0' }}>
+              <div className="notice error">{error}</div>
+            </div>
+          )}
+
+          <div className="messages">
+            <div className="stream">
+              {turns.length === 0 && (
+                <div className="empty">
+                  <h2>One interface, three providers</h2>
+                  <p>
+                    Switch model or tenant between messages — the conversation continues either way, because history is
+                    stored in a provider-agnostic format.
+                  </p>
+                  <div className="suggestions">
+                    {SUGGESTIONS.map((s) => (
+                      <button key={s} className="suggestion" onClick={() => void send(s)}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
+
+              {turns.map((turn, i) => {
+                const isLast = i === turns.length - 1;
+                return (
+                  <div key={i} className={`msg ${turn.role}`}>
+                    <div className="msg-head">
+                      <span className="avatar">{turn.role === 'user' ? 'U' : 'P'}</span>
+                      <span className="role">{turn.role === 'user' ? 'You' : 'Assistant'}</span>
+                      {turn.modelId && <span className="model-tag">{turn.modelId}</span>}
+                    </div>
+
+                    {turn.notices.map((n, j) => (
+                      <div key={j} className={`notice ${n.level === 'warn' ? 'warn' : 'info'}`}>
+                        {n.message}
+                      </div>
+                    ))}
+
+                    {turn.tools.map((t, j) => (
+                      <div key={j} className="tool" data-status={t.status}>
+                        <div className="tool-head">
+                          {t.status === 'running' || t.status === 'started' ? <span className="spinner" /> : null}
+                          <span className="tool-name">{t.name}</span>
+                          <span className={`chip ${t.status === 'error' ? 'error' : t.status === 'done' ? 'ok' : ''}`}>{t.status}</span>
+                        </div>
+                        {t.input ? <pre>{JSON.stringify(t.input)}</pre> : null}
+                        {t.output ? <pre>{t.output.slice(0, 400)}</pre> : null}
+                      </div>
+                    ))}
+
+                    <div className="bubble">
+                      {/* User text stays verbatim — they typed it, and markdown
+                          in a question is almost always literal. Assistant text
+                          is rendered, streaming-safe. */}
+                      {turn.role === 'user' ? turn.text : <Markdown text={turn.text} />}
+                      {turn.role === 'assistant' && isLast && streaming && <span className="caret" />}
+                    </div>
+
+                    {turn.error && <div className="notice error" style={{ marginTop: 10 }}>{turn.error}</div>}
+
+                    {turn.metrics && (
+                      <div className="meta-row">
+                        <span className="chip">{turn.metrics.provider}</span>
+                        <span className="chip mono">ttft {turn.metrics.ttftMs ?? '—'}ms</span>
+                        <span className="chip mono">{turn.metrics.totalMs}ms total</span>
+                        <span className="chip mono">
+                          {turn.metrics.usage.inputTokens}↓ {turn.metrics.usage.outputTokens}↑
+                        </span>
+                        <span className="chip cost">${turn.metrics.costUsd.toFixed(6)}</span>
+                        {turn.metrics.retryCount > 0 && <span className="chip warn">{turn.metrics.retryCount} retries</span>}
+                        {turn.metrics.fallbackFrom && <span className="chip warn">↩ from {turn.metrics.fallbackFrom}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div ref={bottomRef} />
             </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
+          </div>
 
-        <div className="composer">
-          <textarea
-            value={input}
-            placeholder="Ask something. Switch model or tenant between messages — the conversation continues."
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          {streaming ? (
-            <button onClick={stop}>Stop</button>
-          ) : (
-            <button onClick={() => void send()} disabled={!input.trim() || !modelId}>
-              Send
-            </button>
-          )}
-        </div>
-      </div>
+          <div className="composer-wrap">
+            <div className="composer-inner">
+              <div className="composer-tools">
+                <select value={collectionId} onChange={(e) => setCollectionId(e.target.value)} title="Ground answers in a document collection">
+                  <option value="">No documents</option>
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
 
-      <div className="side">
-        {selectedCollection && (
-          <RetrievalSettings
-            collection={selectedCollection}
-            onSaved={(updated) => setCollections((cs) => cs.map((c) => (c.id === updated.id ? updated : c)))}
-          />
-        )}
-        <Citations citations={citations} />
-        <MetricsPanel refreshKey={turns.length} tenant={tenant} />
+                <button className="btn" onClick={createCollection}>
+                  ＋ Collection
+                </button>
+
+                <label className="btn" style={{ cursor: collectionId ? 'pointer' : 'not-allowed', opacity: collectionId ? 1 : 0.5 }}>
+                  {uploading ? <span className="spinner" /> : '⇪'} {uploading ? 'Indexing…' : 'Upload'}
+                  <input
+                    type="file"
+                    accept=".pdf,.txt,.md,.markdown"
+                    hidden
+                    disabled={!collectionId || uploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void upload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+
+                <button
+                  className="chip chip-toggle"
+                  data-on={toolsEnabled && toolsSupported}
+                  disabled={!toolsSupported}
+                  onClick={() => setToolsEnabled((v) => !v)}
+                  title={toolsSupported ? 'calculator · get_weather · search_documents' : 'This model does not support tool calling'}
+                >
+                  ⚙ Tools {toolsSupported ? (toolsEnabled ? 'on' : 'off') : 'unsupported'}
+                </button>
+              </div>
+
+              <div className="composer">
+                <textarea
+                  ref={taRef}
+                  rows={1}
+                  value={input}
+                  placeholder="Ask anything…"
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void send();
+                    }
+                  }}
+                />
+                {streaming ? (
+                  <button className="btn btn-danger" onClick={stop}>
+                    ■ Stop
+                  </button>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => void send()} disabled={!input.trim() || !modelId}>
+                    Send ↵
+                  </button>
+                )}
+              </div>
+
+              <div className="hint">
+                <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line · Stop aborts the upstream
+                request, not just the render
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
+          <div className="tabs" role="tablist">
+            {(
+              [
+                ['sources', 'Sources', citations.length],
+                ['usage', 'Usage', 0],
+                ['retrieval', 'Retrieval', 0],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button key={key} role="tab" aria-selected={tab === key} className="tab" onClick={() => setTab(key as Tab)}>
+                {label}
+                {count > 0 && <span className="count">{count}</span>}
+              </button>
+            ))}
+          </div>
+
+          <div className="tabpanel" key={tab}>
+            {tab === 'sources' && <Citations citations={citations} />}
+            {tab === 'usage' && <MetricsPanel refreshKey={turns.length} tenant={tenant} />}
+            {tab === 'retrieval' && (
+              <RetrievalSettings
+                collection={selectedCollection}
+                onSaved={(updated) => setCollections((cs) => cs.map((c) => (c.id === updated.id ? updated : c)))}
+              />
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );
