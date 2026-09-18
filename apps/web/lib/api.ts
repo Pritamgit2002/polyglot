@@ -39,6 +39,11 @@ export const api = {
   collections: () => request<Collection[]>('/api/collections'),
   createCollection: (name: string) =>
     request<Collection>('/api/collections', { method: 'POST', body: JSON.stringify({ name }) }),
+  updateCollection: (id: string, settings: Partial<Record<string, number>>) =>
+    request<Collection & { note?: string }>(`/api/collections/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    }),
   metricsSummary: () => request<MetricsSummary>('/api/metrics/summary'),
   metricsRequests: () => request<RequestLog[]>('/api/metrics/requests'),
 

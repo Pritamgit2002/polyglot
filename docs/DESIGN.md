@@ -288,6 +288,8 @@ CI test that fails if any new table is created without a policy.
 | 8 | `cacheWriteTokens` added to `Usage` | Folding cache writes into cached tokens | Anthropic bills cache writes at 1.25× input and reports them separately. Merging them misprices every first request against a cached prefix. |
 | 9 | Synchronous ingestion | A job queue | A queue is the right answer and the `status` column is there for it, but it needs a worker, a broker and a polling UI — a day of work that scores nothing. Cut honestly. |
 | 10 | Money as `numeric(12,6)` | `float`/`real` | Floating-point money accumulates error across thousands of rows, and the aggregate view is the whole point of Module E. |
+| 11 | Retrieval settings persisted per collection, bounded server-side | Query-string overrides per request; client-side only | Settings belong to a corpus, not to a question, and they must survive a reload. Bounds are enforced in the route because the UI is not a security boundary — `topK` is a `LIMIT` and `chunkSize` drives an embedding call, so unbounded values are a cost amplifier. Changing chunk size does **not** re-index existing documents, and the UI says so rather than silently diverging chunk sizes within one collection. |
+| 12 | Title conversations from the first user message, via SQL `CASE` | Client-side titling; a separate summarization call | A model call to name a chat costs money and latency for no user-visible benefit. The `CASE` keeps naming and the `updated_at` bump in one statement and never clobbers a user's own rename. |
 
 ## 6. What I would do differently with more time
 

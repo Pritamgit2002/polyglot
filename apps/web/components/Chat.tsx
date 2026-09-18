@@ -13,6 +13,7 @@ import {
 } from '@/lib/api';
 import MetricsPanel from './MetricsPanel';
 import Citations, { type Citation } from './Citations';
+import RetrievalSettings from './RetrievalSettings';
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -180,6 +181,9 @@ export default function Chat() {
     } finally {
       setStreaming(false);
       abortRef.current = null;
+      // The first turn names the conversation server-side, so re-read the list
+      // rather than guessing the title on the client.
+      api.conversations().then(setConversations).catch(() => {});
     }
   }
 
@@ -202,6 +206,7 @@ export default function Chat() {
   }
 
   const selected = models.find((m) => m.id === modelId);
+  const selectedCollection = collections.find((c) => c.id === collectionId);
 
   return (
     <div className="layout">
@@ -362,6 +367,12 @@ export default function Chat() {
       </div>
 
       <div className="side">
+        {selectedCollection && (
+          <RetrievalSettings
+            collection={selectedCollection}
+            onSaved={(updated) => setCollections((cs) => cs.map((c) => (c.id === updated.id ? updated : c)))}
+          />
+        )}
         <Citations citations={citations} />
         <MetricsPanel refreshKey={turns.length} tenant={tenant} />
       </div>
