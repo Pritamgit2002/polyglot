@@ -1,0 +1,20 @@
+# Optional convenience. If you already have Postgres 14+ with pgvector, skip this.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: polyglot
+      POSTGRES_PASSWORD: polyglot
+      POSTGRES_DB: polyglot
+    ports:
+      - "5432:5432"
+    volumes:
+      - polyglot-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polyglot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  polyglot-db:
