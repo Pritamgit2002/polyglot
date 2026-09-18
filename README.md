@@ -7,29 +7,34 @@ every request costs and how long it took.
 
 ## Demo
 
-Thirty seconds, one pass over every module: streaming chat, a provider swapped
-mid-conversation, tool calling, a document uploaded and answered with citations,
-retrieval tuned live, the cost and latency panel, and a tenant switch.
+Forty seconds, one pass over every module: streaming chat, a provider swapped
+mid-conversation, a stream stopped mid-answer, tool calling, a document uploaded and
+answered with citations, retrieval tuned live, the cost and latency panel, and a tenant
+switch. The strip along the bottom names what is on screen and highlights which module
+it belongs to as it runs.
 
-![Polyglot — 30-second walkthrough](docs/demo.gif)
+![Polyglot — walkthrough](docs/demo.gif)
 
 ▶ **[Watch at full resolution (MP4, 1280×810)](docs/demo.mp4)** — the GIF above is a
 lower-fidelity preview of the same recording.
 
-| Time | On screen |
-| ---- | --------- |
-| 0:00 | **A** — five models across three providers, behind one interface |
-| 0:02 | **B** — chat streamed token-by-token over SSE, then TTFT, latency, tokens and USD cost for that request |
-| 0:06 | **B** — provider switched to Gemini *inside* the conversation; it answers what was asked first, because history is stored provider-agnostic |
-| 0:10 | **D** — tools on, model switched to a third provider, `calculator` and `get_weather` called in one turn and their arguments and results shown |
-| 0:18 | **C** — a collection created and a document uploaded: chunked with overlap, embedded, stored in pgvector |
-| 0:23 | **C** — the answer grounded in that document with an inline citation, and every retrieved chunk visible with its similarity |
-| 0:26 | **C** — top-k, similarity threshold and chunking tuned at runtime |
-| 0:27 | **E** — spend and latency aggregated per provider, then a tenant switch: the panel reloads against `globex`, which sees its own rows and nothing else |
+| Time | Module | On screen |
+| ---- | ------ | --------- |
+| 0:00 | **A** | Five models across three providers, behind one interface |
+| 0:02 | **B** | Chat streamed token-by-token over SSE |
+| 0:06 | **E** | TTFT, total latency, tokens and USD cost for that one request |
+| 0:07 | **B** | Provider switched to Gemini *inside* the conversation; it still answers what was asked first, because history is stored provider-agnostic |
+| 0:11 | **B** | Stop — a long answer cut off mid-sentence: the upstream provider call is aborted, not just the render |
+| 0:20 | **D** | Tools on, a third provider: `calculator` and `get_weather` called in one turn, with their arguments and results |
+| 0:28 | **C** | A collection created and a document uploaded: chunked with overlap, embedded, stored in pgvector |
+| 0:31 | **C** | The answer grounded in that document with an inline citation, and every retrieved chunk with its similarity |
+| 0:37 | **C** | Top-k, similarity threshold and chunking tuned at runtime |
+| 0:38 | **E** | Spend and latency aggregated per provider |
+| 0:40 | — | Tenant switch: the panel reloads against `globex`, which sees its own rows and nothing else |
 
 Nothing in the recording is mocked or sped through a stub: every answer is a live call
 to Anthropic, Google and OpenAI, and the latency and dollar figures on screen are the
-ones those calls actually produced. The recording runs at 1.75× so it fits in 30
+ones those calls actually produced. The recording runs at 1.78× so it fits in 42
 seconds.
 
 ---
