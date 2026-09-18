@@ -165,18 +165,13 @@ untrusted", which put a third copy of the delimiter into the text an injected
 document could aim at. Caught by a test asserting that exactly two markers
 survive a hostile document. I fixed the prompt rather than the test.
 
-### 11. The docs claimed two things the code did not do
+### 11. The docs claimed something the code did not do
 
-- The README said `responseSchema` was supported on all three adapters. It was
-  not implemented for Anthropic at all. Anthropic has no `response_format`
-  equivalent, so it is now done the supported way — declare one tool whose
-  `input_schema` is the target schema, force it with `tool_choice`, and unwrap
-  the result back into a text block so callers see what the other two return.
-- `DESIGN.md` described `tenant_access_log` as an audit trail. Nothing wrote to
-  it.
+`DESIGN.md` described `tenant_access_log` as an audit trail. Nothing wrote to
+it.
 
 The brief says a module claimed and not built is scored against you, while one
-honestly cut is not. Both were fixed rather than reworded, but the lesson is
+honestly cut is not. This was fixed rather than reworded, but the lesson is
 that AI-drafted documentation describes the code it *believes* it wrote.
 
 ---

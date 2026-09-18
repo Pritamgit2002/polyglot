@@ -64,8 +64,6 @@ export interface CompletionRequest {
   /** Must reach the upstream fetch. Cancelling has to cancel, not just stop
    *  rendering — otherwise we keep paying for tokens nobody reads. */
   signal?: AbortSignal;
-  /** Optional JSON Schema for structured output (Module F / optional extra). */
-  responseSchema?: Record<string, unknown>;
 }
 
 // ---------- what comes back ----------

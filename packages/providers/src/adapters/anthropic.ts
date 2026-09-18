@@ -27,17 +27,6 @@ import { postJson, readSse } from '../http.js';
 
 const NAME = 'anthropic';
 
-/**
- * Anthropic has no `response_format` / `responseSchema` equivalent. The
- * supported way to get schema-valid JSON is to declare a single tool whose
- * input_schema IS the desired schema and force the model to call it.
- *
- * The forced call is then unwrapped back into a TEXT block, so a caller sees
- * the same thing Gemini and OpenAI return — JSON as text — rather than having
- * to know that on this one provider structured output arrives as a tool call.
- */
-const STRUCTURED_TOOL = 'emit_structured_output';
-
 interface AnthropicBlock {
   type: string;
   text?: string;
@@ -143,28 +132,15 @@ function buildBody(req: CompletionRequest, ctx: ProviderContext, stream: boolean
     ...(req.system ? { system: req.system } : {}),
     messages: toAnthropicMessages(req.messages),
     ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-    // Structured output and caller-supplied tools are mutually exclusive here:
-    // forcing tool_choice at one tool necessarily excludes the others.
-    ...(req.responseSchema
+    ...(req.tools?.length
       ? {
-          tools: [
-            {
-              name: STRUCTURED_TOOL,
-              description: 'Emit the final answer as JSON matching the provided schema.',
-              input_schema: req.responseSchema,
-            },
-          ],
-          tool_choice: { type: 'tool', name: STRUCTURED_TOOL },
+          tools: req.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.parameters,
+          })),
         }
-      : req.tools?.length
-        ? {
-            tools: req.tools.map((t) => ({
-              name: t.name,
-              description: t.description,
-              input_schema: t.parameters,
-            })),
-          }
-        : {}),
+      : {}),
     ...(stream ? { stream: true } : {}),
   };
 }
@@ -237,9 +213,6 @@ const anthropic: Provider = {
       const content: ContentBlock[] = json.content.flatMap((b): ContentBlock[] => {
         if (b.type === 'text') return [{ type: 'text', text: b.text ?? '' }];
         if (b.type === 'tool_use') {
-          // Unwrap the forced structured-output call so callers get text,
-          // matching every other provider.
-          if (b.name === STRUCTURED_TOOL) return [{ type: 'text', text: JSON.stringify(b.input ?? {}) }];
           return [{ type: 'tool_use', id: b.id!, name: b.name!, input: (b.input as Record<string, unknown>) ?? {} }];
         }
         return [];
@@ -290,9 +263,7 @@ const anthropic: Provider = {
           const cb = evt.content_block;
           if (cb?.type === 'tool_use') {
             toolBuf.set(evt.index, { id: cb.id, name: cb.name, json: '' });
-            // The structured-output tool is an implementation detail of this
-            // adapter; it must not surface as a tool call to the app.
-            if (cb.name !== STRUCTURED_TOOL) yield { type: 'tool_use_start', id: cb.id, name: cb.name };
+            yield { type: 'tool_use_start', id: cb.id, name: cb.name };
           }
           break;
         }
@@ -307,10 +278,7 @@ const anthropic: Provider = {
             const buf = toolBuf.get(evt.index);
             if (buf) {
               buf.json += d.partial_json;
-              // Structured output streams as text, so a caller can render
-              // partial JSON identically across all three providers.
-              if (buf.name === STRUCTURED_TOOL) yield { type: 'text_delta', text: d.partial_json };
-              else yield { type: 'tool_use_delta', id: buf.id, partialJson: d.partial_json };
+              yield { type: 'tool_use_delta', id: buf.id, partialJson: d.partial_json };
             }
           }
           break;
@@ -320,7 +288,6 @@ const anthropic: Provider = {
           const buf = toolBuf.get(evt.index);
           if (buf) {
             toolBuf.delete(evt.index);
-            if (buf.name === STRUCTURED_TOOL) break; // already streamed as text
             yield {
               type: 'tool_use_complete',
               id: buf.id,

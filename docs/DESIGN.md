@@ -294,10 +294,9 @@ CI test that fails if any new table is created without a policy.
 ## 6. What I would do differently with more time
 
 1. **Make the streaming transport pluggable.** Right now SSE is assumed from the
-   adapter to the browser. Anthropic and OpenAI both support partial-JSON
-   streaming for structured output, and a WebSocket transport would let the
-   client cancel without tearing down the HTTP connection. The `StreamEvent`
-   union is already transport-agnostic; the API layer is not.
+   adapter to the browser. A WebSocket transport would let the client cancel
+   without tearing down the HTTP connection. The `StreamEvent` union is already
+   transport-agnostic; the API layer is not.
 
 2. **Replace truncation with a summarize-and-pin strategy.** Truncation loses
    the beginning of long RAG conversations, which is usually where the user

@@ -171,14 +171,6 @@ function buildBody(req: CompletionRequest, ctx: ProviderContext, stream: boolean
           ...((extra.paramsWhenToolsPresent as Record<string, unknown>) ?? {}),
         }
       : {}),
-    ...(req.responseSchema
-      ? {
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: 'response', strict: true, schema: req.responseSchema },
-          },
-        }
-      : {}),
     ...(stream
       ? {
           stream: true,

@@ -196,12 +196,6 @@ function buildBody(req: CompletionRequest, ctx: ProviderContext) {
     generationConfig: {
       ...(req.maxTokens !== undefined ? { maxOutputTokens: req.maxTokens } : {}),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-      ...(req.responseSchema
-        ? {
-            responseMimeType: 'application/json',
-            responseSchema: sanitizeSchemaForGemini(req.responseSchema),
-          }
-        : {}),
     },
   };
 }

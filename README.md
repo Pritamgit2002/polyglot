@@ -44,7 +44,7 @@ preinstalled, matching the default `DATABASE_URL`. **macOS/Homebrew:**
 ### Verify without touching a provider
 
 ```bash
-npm test            # 55 tests
+npm test            # 67 tests
 npm run check-types
 npm run verify      # resolves every configured provider to its adapter, prints the cost maths
 ```
@@ -65,9 +65,9 @@ RLS off. They skip automatically when `DATABASE_APP_URL` is unset.
 
 | Provider | Adapter file | Status |
 |---|---|---|
-| Anthropic | `adapters/anthropic.ts` | Full — complete, stream, tools, structured output |
-| Google Gemini | `adapters/gemini.ts` | Full — complete, stream, tools, structured output, embeddings |
-| OpenAI | `adapters/openai-compat.ts` | Full — complete, stream, tools, structured output, embeddings |
+| Anthropic | `adapters/anthropic.ts` | Full — complete, stream, tools |
+| Google Gemini | `adapters/gemini.ts` | Full — complete, stream, tools, embeddings |
+| OpenAI | `adapters/openai-compat.ts` | Full — complete, stream, tools, embeddings |
 
 Three providers, satisfying §3.A's requirement of Anthropic + Gemini + one of
 OpenAI/Groq/DeepSeek. Anthropic and Gemini are the two that genuinely disagree
@@ -88,7 +88,7 @@ than asserted.
 
 | Module | Status | Notes |
 |---|---|---|
-| **A — Provider abstraction** | **Done** | The contract, the three adapters, dynamic registry, config-driven models and pricing, normalized error taxonomy, 33 adapter/core tests. |
+| **A — Provider abstraction** | **Done** | The contract, the three adapters, dynamic registry, config-driven models and pricing, normalized error taxonomy, 45 adapter/core tests. |
 | **B — Chat with true streaming** | **Done** | SSE, token-by-token. Provider and model switchable between messages inside one conversation. Persisted in Postgres. Stop aborts the upstream request. Context overflow truncates oldest-first and says so in the UI. |
 | **C — RAG** | **Done** | PDF/TXT/MD upload, paragraph-aware chunking with overlap, pgvector cosine retrieval, inline citations, chunk text visible in the UI, explicit "I don't know" grounding. Chunk size, overlap, top-k and the similarity threshold are tunable at runtime from the sidebar, per collection. The two ingest-time parameters are labelled as such in the UI: they apply to documents uploaded afterwards, because re-chunking existing documents means paying to re-embed them and that is not something to do implicitly. |
 | **D — Tool calling** | **Done** | `calculator`, `get_weather`, `search_documents`. One definition format, translated per provider. Multi-round loop, streamed and accumulated arguments, graceful degradation when a model has no tool support. |
@@ -96,13 +96,8 @@ than asserted.
 
 ### Cut deliberately
 
-- **Optional extras.** None of Section 6 is finished. Structured output is the
-  closest: `responseSchema` is implemented and tested in all three adapters
-  (Anthropic via forced tool-calling, Gemini via `responseSchema`, OpenAI via
-  `json_schema`), and normalized so every provider returns JSON as text. What is
-  **missing** is the rest of the feature — no UI, and no validate-then-retry
-  loop, which Anthropic needs because tool forcing guarantees a call but not a
-  schema-valid one. Do not count this as a delivered extra.
+- **Optional extras.** None of Section 6 is built. Scoped out entirely to
+  protect the required modules rather than ship any of them partially.
 - **Background ingestion.** Uploads are processed synchronously in the request.
   The `status` column exists precisely so this can become a queue without a
   schema change.

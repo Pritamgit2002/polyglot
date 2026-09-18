@@ -158,31 +158,7 @@ over-long prompt is the case where only the message text distinguishes it).
 sends `2.5s` / `1m30s`, some send an HTTP date, some send bare seconds.
 `retryAfterFromHeaders()` parses all four forms.
 
-## 10. Structured output — three unrelated mechanisms
-
-| Provider          | Mechanism                                                                                                                                                                          |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenAI-compatible | `response_format: { type: 'json_schema', json_schema: { schema, strict: true } }`                                                                                                  |
-| Gemini            | `generationConfig.responseMimeType = 'application/json'` **plus** `generationConfig.responseSchema` (the same OpenAPI subset, so it needs the same sanitizer as tool schemas)      |
-| **Anthropic**     | **No equivalent exists.** The supported route is to declare a single tool whose `input_schema` _is_ the target schema and force it with `tool_choice: { type: 'tool', name: ... }` |
-
-**Reconciled:** one `responseSchema` field on `CompletionRequest`. The Anthropic
-adapter does the tool-forcing and then **unwraps the forced call back into a
-text block**, so a caller receives JSON-as-text on all three. Streaming is
-normalized the same way: Anthropic's `input_json_delta` fragments are emitted as
-`text_delta`, so partial JSON renders identically everywhere and the synthetic
-tool never leaks upward as a `tool_use` event.
-
-Two consequences worth stating, because they are real limitations rather than
-oversights:
-
-- On Anthropic, structured output and caller-supplied tools are **mutually
-  exclusive** — forcing `tool_choice` at one tool necessarily excludes the rest.
-- Only Gemini and OpenAI enforce the schema server-side. Anthropic's tool
-  forcing guarantees a _call_, not a _valid_ one, so a validate-then-retry loop
-  is still required for parity. That loop is **not built** — see the README.
-
-## 11. Cancellation — nobody reports what an aborted stream cost you
+## 10. Cancellation — nobody reports what an aborted stream cost you
 
 Aborting mid-stream is well supported on all three (pass an `AbortSignal` to
 `fetch` and the upstream request really is torn down — measured: a generation
@@ -200,7 +176,7 @@ Dropping the record instead — which is what happens if you just `return` —
 makes cancelled spend invisible, and a user who cancels ten long generations has
 genuinely spent money that never appears in the metrics panel.
 
-## 12. Pricing is context-tiered, and a flat rate per model is wrong
+## 11. Pricing is context-tiered, and a flat rate per model is wrong
 
 Every provider now charges more once a prompt crosses a size threshold, and no
 two express it the same way:
@@ -231,7 +207,7 @@ pricing page** (2026-09-18). The Anthropic and Gemini figures in `models.json`
 are unverified, and neither declares a `longContext` tier yet even though both
 have one — so long-prompt costs on those two are currently under-reported.
 
-## 13. Quirks are per-MODEL, not just per-provider
+## 12. Quirks are per-MODEL, not just per-provider
 
 The assumption that a vendor behaves one way is wrong, and it broke this build.
 Both of these were verified against the live API on 2026-09-18:
@@ -259,7 +235,7 @@ a way to hide a permanently broken configuration.** Every verification run since
 passes `fallbackChain: []` and asserts on `metrics.modelId`, so a masked failure
 cannot pass as a pass.
 
-## 14. Miscellaneous
+## 13. Miscellaneous
 
 - **`max_tokens` is required by Anthropic** and optional everywhere else. The
   adapter defaults it rather than sending `undefined`, which is a 400.
