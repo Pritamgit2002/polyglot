@@ -228,14 +228,20 @@ export default function Chat() {
     abortRef.current?.abort();
   }
 
+  /** Collections stay the unit of retrieval, but a first upload should not
+   *  dead-end on an empty picker: with nothing selected we create the default
+   *  collection and index into it. */
   async function upload(file: File) {
-    if (!collectionId) {
-      setError('Create or select a collection before uploading.');
-      return;
-    }
     setUploading(true);
     try {
-      await api.uploadDocument(collectionId, file);
+      let target = collectionId;
+      if (!target) {
+        const created = await api.createCollection('My Documents');
+        setCollections((c) => [created, ...c]);
+        setCollectionId(created.id);
+        target = created.id;
+      }
+      await api.uploadDocument(target, file);
       setError(null);
     } catch (e) {
       setError(String((e as Error).message));
@@ -415,13 +421,13 @@ export default function Chat() {
                   ＋ Collection
                 </button>
 
-                <label className="btn" style={{ cursor: collectionId ? 'pointer' : 'not-allowed', opacity: collectionId ? 1 : 0.5 }}>
+                <label className="btn" style={{ cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1 }}>
                   {uploading ? <span className="spinner" /> : '⇪'} {uploading ? 'Indexing…' : 'Upload'}
                   <input
                     type="file"
                     accept=".pdf,.txt,.md,.markdown"
                     hidden
-                    disabled={!collectionId || uploading}
+                    disabled={uploading}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) void upload(f);
