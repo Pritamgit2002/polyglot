@@ -35,10 +35,28 @@ export function registerChatRoutes(app: FastifyInstance): void {
     }
 
     const controller = new AbortController();
-    // A closed socket must abort the UPSTREAM call, not merely stop writing.
-    // Otherwise the user hits Stop, the tab goes quiet, and we keep paying for
-    // tokens nobody will ever read.
-    req.raw.on('close', () => controller.abort());
+
+    /**
+     * A closed socket must abort the UPSTREAM provider call, not merely stop
+     * writing — otherwise the user hits Stop, the tab goes quiet, and we keep
+     * paying for tokens nobody will ever read.
+     *
+     * This listens on `reply.raw`, NOT `req.raw`. The request message is
+     * already complete by the time the handler runs (Fastify has read the JSON
+     * body), so `req.raw` emits 'close' immediately on every request and never
+     * again — it cannot tell you the client went away mid-stream. The RESPONSE
+     * stream is the one that closes when the connection drops.
+     *
+     * `writableEnded` distinguishes the two ways a response closes: false means
+     * the client disconnected while we were still streaming; true means we
+     * finished normally and there is nothing to abort.
+     */
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableEnded) {
+        req.log.info('client disconnected mid-stream; aborting upstream request');
+        controller.abort();
+      }
+    });
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream',
