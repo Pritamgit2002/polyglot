@@ -33,8 +33,9 @@ createdb polyglot && createuser -s polyglot
 ### Verify without touching a provider
 
 ```bash
-npm test          # 43 tests, all adapter behaviour against mocked HTTP
+npm test            # 43 tests, all adapter behaviour against mocked HTTP
 npm run check-types
+npm run verify      # resolves every configured provider to its adapter, prints the cost maths
 ```
 
 The adapter tests use recorded request/response fixtures, so they prove the
