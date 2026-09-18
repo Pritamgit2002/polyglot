@@ -177,8 +177,15 @@ export const TOOLS: Record<string, ToolImplementation> = {
   search_documents: searchDocuments,
 };
 
+/**
+ * `undefined` means the caller expressed no preference, so every tool is
+ * offered. An EMPTY ARRAY means the caller explicitly disabled tools, so none
+ * are — these are different intents and `names?.length` collapses them, which
+ * silently ships ~500 tokens of tool schema on every request that asked for
+ * none and lets the model call a tool it was told it did not have.
+ */
 export function toolDefinitions(names?: string[]): ToolDefinition[] {
-  const selected = names?.length ? names : Object.keys(TOOLS);
+  const selected = names ?? Object.keys(TOOLS);
   return selected.flatMap((n) => (TOOLS[n] ? [TOOLS[n]!.definition] : []));
 }
 

@@ -116,7 +116,9 @@ export async function* runChatTurn(opts: ChatTurnOptions): AsyncGenerator<Client
   };
 
   const model = getModel(opts.modelId);
-  const tools = model.capabilities.tools ? toolDefinitions(opts.enabledTools) : undefined;
+  const selectedTools = model.capabilities.tools ? toolDefinitions(opts.enabledTools) : [];
+  // Send undefined rather than [], which some providers reject outright.
+  const tools = selectedTools.length > 0 ? selectedTools : undefined;
   if (!model.capabilities.tools && opts.enabledTools?.length) {
     yield { type: 'notice', level: 'warn', message: `${model.displayName} does not support tool calling, so tools are disabled for this turn.` };
   }

@@ -49,3 +49,24 @@ describe('calculator', () => {
     expect(() => evaluateExpression('2 2')).toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('tool selection', () => {
+  it('distinguishes "no preference" from "explicitly none"', async () => {
+    const { toolDefinitions } = await import('../src/tools/index.js');
+
+    // undefined -> offer everything
+    expect(toolDefinitions().map((t) => t.name).sort()).toEqual(['calculator', 'get_weather', 'search_documents']);
+
+    // [] -> offer nothing. Collapsing this into "everything" bills the user for
+    // the tool schema on every request that asked for none.
+    expect(toolDefinitions([])).toEqual([]);
+
+    // a named subset -> exactly that subset
+    expect(toolDefinitions(['calculator']).map((t) => t.name)).toEqual(['calculator']);
+
+    // unknown names are dropped, not thrown on
+    expect(toolDefinitions(['calculator', 'rm_rf']).map((t) => t.name)).toEqual(['calculator']);
+  });
+});
