@@ -200,7 +200,66 @@ Dropping the record instead — which is what happens if you just `return` —
 makes cancelled spend invisible, and a user who cancels ten long generations has
 genuinely spent money that never appears in the metrics panel.
 
-## 12. Miscellaneous
+## 12. Pricing is context-tiered, and a flat rate per model is wrong
+
+Every provider now charges more once a prompt crosses a size threshold, and no
+two express it the same way:
+
+| Provider | Mechanism |
+|---|---|
+| **OpenAI** | A multiplier on the **whole request** once input exceeds **272K** tokens — 2x input, 1.5x output for `gpt-5.6-luna`. The published tables call these the "short context" and "long context" columns. |
+| Gemini | A second rate table above its own threshold. |
+| Anthropic | A separate long-context rate on the models that offer it. |
+
+**Reconciled:** `pricing.longContext` in `models.json` — an optional
+`{ thresholdInputTokens, inputMultiplier, outputMultiplier }`. `computeCostUsd`
+applies the multipliers to input, cached, cache-write and output when
+`inputTokens` **exceeds** the threshold, and is a no-op for models that declare
+no tier. It is config, so a threshold change is a one-line edit.
+
+Two details that are easy to get wrong and are asserted in
+`packages/core/test/core.test.ts`:
+
+- The surcharge applies to the **entire request**, not to the tokens above the
+  threshold. Pricing only the excess under-reports a 300K-token prompt by
+  roughly half.
+- The rule is *exceeds*, not *reaches*: a request of exactly 272,000 tokens is
+  still charged at base rates.
+
+Left honest: **only `openai:gpt-5.6-luna` has been verified against the live
+pricing page** (2026-09-18). The Anthropic and Gemini figures in `models.json`
+are unverified, and neither declares a `longContext` tier yet even though both
+have one — so long-prompt costs on those two are currently under-reported.
+
+## 13. Quirks are per-MODEL, not just per-provider
+
+The assumption that a vendor behaves one way is wrong, and it broke this build.
+Both of these were verified against the live API on 2026-09-18:
+
+- **`gpt-5.6-luna` rejects `max_tokens`** — *"Unsupported parameter: 'max_tokens'
+  is not supported with this model. Use 'max_completion_tokens' instead."*
+  Older OpenAI models accept `max_tokens`, so a provider-wide setting breaks one
+  fleet or the other.
+- **`gpt-5.6-luna` refuses function tools on `/v1/chat/completions`** unless
+  `reasoning_effort` is `'none'` — *"To use function tools, use /v1/responses or
+  set reasoning_effort to none."* The trade-off is no reasoning on tool turns;
+  the alternative is a second adapter for the Responses API.
+
+**Reconciled:** `extra` now exists on the MODEL as well as the provider, and is
+merged over it. Two generic knobs cover both cases — `maxTokensField`, and
+`paramsWhenToolsPresent`, which is spread into the body only when tools are
+actually sent. No `if (model === 'gpt-5.6-luna')` anywhere in the adapter; the
+next model with a different demand is a config entry.
+
+**How this was found, and why it matters.** The first two "successful" calls
+against this model were not successful at all — the fallback chain had quietly
+served them from Anthropic, and the test only printed token counts, not the
+serving provider. **A fallback chain is an availability feature that doubles as
+a way to hide a permanently broken configuration.** Every verification run since
+passes `fallbackChain: []` and asserts on `metrics.modelId`, so a masked failure
+cannot pass as a pass.
+
+## 14. Miscellaneous
 
 - **`max_tokens` is required by Anthropic** and optional everywhere else. The
   adapter defaults it rather than sending `undefined`, which is a 400.
