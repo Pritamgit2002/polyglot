@@ -34,7 +34,7 @@ const cost = computeCostUsd(
 console.log(`\ncost of 12k input (10k of it cached) + 800 output on Sonnet: $${cost.toFixed(6)}`);
 
 try {
-  buildContext('groq:llama-3.3-70b-versatile', { env: {} as NodeJS.ProcessEnv });
+  buildContext('openai:gpt-4.1-mini', { env: {} as NodeJS.ProcessEnv });
   console.log('\n! expected a missing-key error');
 } catch (e) {
   const err = e as { kind: string; retryable: boolean };

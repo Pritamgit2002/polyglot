@@ -5,6 +5,15 @@ import { CTX, collect, jsonResponse, mockFetch, splitSseResponse } from './helpe
 afterEach(() => vi.unstubAllGlobals());
 
 const openai = makeAdapter('openai');
+
+/**
+ * Groq and DeepSeek are NOT configured providers in this build — only Anthropic,
+ * Gemini and OpenAI are. They are exercised here because this one adapter has to
+ * absorb their two quirks through config (`extra`), and those code paths would
+ * otherwise be untested. Passing tests here are the evidence for the claim that
+ * enabling either is a config entry and no code change; they are not a claim
+ * that either ships.
+ */
 const groq = makeAdapter('groq');
 const deepseek = makeAdapter('deepseek');
 const ctx = { ...CTX, baseUrl: 'https://api.openai.com/v1' };

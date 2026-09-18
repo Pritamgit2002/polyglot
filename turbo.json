@@ -6,26 +6,34 @@
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "OPENAI_API_KEY",
-    "GROQ_API_KEY",
-    "DEEPSEEK_API_KEY",
     "OPENWEATHER_API_KEY",
     "API_PORT",
     "NEXT_PUBLIC_API_URL"
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
     "check-types": {
-      "dependsOn": ["^check-types"]
+      "dependsOn": [
+        "^check-types"
+      ]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "lint": {}
   }

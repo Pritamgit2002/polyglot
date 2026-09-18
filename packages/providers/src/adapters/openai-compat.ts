@@ -13,12 +13,16 @@ import {
 import { postJson, readSse } from '../http.js';
 
 /**
- * One adapter for the OpenAI-shaped surface: OpenAI, Groq and DeepSeek.
+ * One adapter for the OpenAI-shaped surface.
  *
- * They are broadly compatible but NOT identical, and the differences are
- * expressed as config (`providers.<name>.extra`) rather than as three
- * near-duplicate files — copy-pasted adapters are called out in the brief as a
- * thing that loses points, and they are also just a maintenance trap.
+ * Only OpenAI is a configured provider in this build. Groq and DeepSeek speak
+ * the same surface but are NOT shipped — enabling either is one entry in
+ * models.json plus a key, with no code change. Their quirks are handled here
+ * and covered by tests precisely so that claim is true rather than hopeful.
+ *
+ * The differences are expressed as config (`providers.<name>.extra`) rather
+ * than as three near-duplicate files — copy-pasted adapters are called out in
+ * the brief as a thing that loses points, and they are a maintenance trap.
  *
  * Known divergences, all handled below:
  *  - Groq ignores `stream_options.include_usage` and instead attaches usage to
