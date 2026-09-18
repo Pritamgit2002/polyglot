@@ -159,6 +159,16 @@ function buildBody(req: CompletionRequest, ctx: ProviderContext, stream: boolean
             type: 'function',
             function: { name: t.name, description: t.description, parameters: t.parameters },
           })),
+          /**
+           * Extra body fields a model requires ONLY when tools are present.
+           *
+           * gpt-5.6-luna refuses function tools on /v1/chat/completions unless
+           * `reasoning_effort` is 'none' — the vendor's own stated workaround,
+           * the alternative being a second adapter for /v1/responses. Kept as
+           * generic config rather than an `if (model === ...)` so the next
+           * model with a different demand is a config entry, not a code change.
+           */
+          ...((extra.paramsWhenToolsPresent as Record<string, unknown>) ?? {}),
         }
       : {}),
     ...(req.responseSchema

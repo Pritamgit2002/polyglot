@@ -78,7 +78,8 @@ export function buildContext(
     baseUrl: provider.baseUrl,
     providerModelId: model.providerModelId,
     timeoutMs: opts.timeoutMs ?? loadConfig().defaults.timeoutMs,
-    extra: provider.extra,
+    // Model-level quirks win over provider-level defaults.
+    extra: { ...provider.extra, ...model.extra },
   };
 }
 

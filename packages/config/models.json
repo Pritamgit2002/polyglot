@@ -109,8 +109,8 @@
       "provider": "openai",
       "providerModelId": "gpt-5.6-luna",
       "displayName": "GPT-5.6 Luna",
-      "contextWindow": 1047576,
-      "maxOutputTokens": 32768,
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
       "capabilities": {
         "tools": true,
         "vision": true,
@@ -118,11 +118,23 @@
         "streaming": true
       },
       "pricing": {
-        "inputPerMTok": 0.4,
-        "outputPerMTok": 1.6,
-        "cachedInputPerMTok": 0.1
+        "inputPerMTok": 0.2,
+        "outputPerMTok": 1.2,
+        "cachedInputPerMTok": 0.02,
+        "cacheWritePerMTok": 0.25,
+        "longContext": {
+          "thresholdInputTokens": 272000,
+          "inputMultiplier": 2,
+          "outputMultiplier": 1.5
+        }
       },
-      "$unverifiedPricing": "Rates, contextWindow and maxOutputTokens are inherited from gpt-4.1-mini and have NOT been checked for this model. OpenAI cost and truncation figures are wrong until corrected."
+      "extra": {
+        "$why": "Two verified quirks (checked against the live API 2026-09-18). 1) Rejects max_tokens: 'Use max_completion_tokens instead.' 2) Refuses function tools on /v1/chat/completions unless reasoning_effort is 'none': 'To use function tools, use /v1/responses or set reasoning_effort to none.' The trade-off is no reasoning on tool turns; the alternative is a second adapter for /v1/responses.",
+        "maxTokensField": "max_completion_tokens",
+        "paramsWhenToolsPresent": {
+          "reasoning_effort": "none"
+        }
+      }
     }
   },
   "embeddingModels": {

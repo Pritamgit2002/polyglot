@@ -145,3 +145,46 @@ describe('openai-compatible error normalization', () => {
     expect(err.provider).toBe('openai');
   });
 });
+
+describe('per-model parameter quirks', () => {
+  it('sends max_completion_tokens when the model demands it', async () => {
+    const { calls } = mockFetch(() => jsonResponse({ choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }] }));
+
+    // Newer OpenAI models reject max_tokens outright. The knob is per-MODEL,
+    // not per-provider, because older models on the same vendor accept it.
+    await openai.complete({ model: 'openai:x', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], maxTokens: 128_000 }, {
+      ...ctx,
+      extra: { maxTokensField: 'max_completion_tokens' },
+    });
+
+    expect(calls[0]!.body.max_completion_tokens).toBe(128_000);
+    expect(calls[0]!.body.max_tokens).toBeUndefined();
+  });
+
+  it('defaults to max_tokens when nothing says otherwise', async () => {
+    const { calls } = mockFetch(() => jsonResponse({ choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }] }));
+    await openai.complete({ model: 'openai:x', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], maxTokens: 500 }, ctx);
+
+    expect(calls[0]!.body.max_tokens).toBe(500);
+    expect(calls[0]!.body.max_completion_tokens).toBeUndefined();
+  });
+});
+
+describe('tool-conditional body params', () => {
+  const lunaCtx = { ...ctx, extra: { paramsWhenToolsPresent: { reasoning_effort: 'none' } } };
+  const tool = { name: 'calculator', description: 'eval', parameters: { type: 'object', properties: {} } };
+
+  it('adds the required params only when tools are actually sent', async () => {
+    const { calls } = mockFetch(() => jsonResponse({ choices: [{ message: { content: 'x' }, finish_reason: 'stop' }] }));
+
+    await openai.complete({ model: 'openai:x', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], tools: [tool] }, lunaCtx);
+    expect(calls[0]!.body.reasoning_effort).toBe('none');
+  });
+
+  it('leaves them off a tool-free request, so reasoning still works normally', async () => {
+    const { calls } = mockFetch(() => jsonResponse({ choices: [{ message: { content: 'x' }, finish_reason: 'stop' }] }));
+
+    await openai.complete({ model: 'openai:x', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] }, lunaCtx);
+    expect(calls[0]!.body.reasoning_effort).toBeUndefined();
+  });
+});
