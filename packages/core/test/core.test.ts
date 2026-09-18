@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { computeCostUsd, fitToContextWindow, computeDelay, ProviderError, withRetry } from '../src/index.js';
+import {
+  computeCostUsd,
+  computeDelay,
+  fitToContextWindow,
+  fromTransportError,
+  ProviderError,
+  withRetry,
+} from '../src/index.js';
 
 describe('cost', () => {
   const pricing = { inputPerMTok: 3, outputPerMTok: 15, cachedInputPerMTok: 0.3, cacheWritePerMTok: 3.75 };
@@ -94,5 +101,25 @@ describe('retry', () => {
       expect(d).toBeGreaterThanOrEqual(0);
       expect(d).toBeLessThanOrEqual(400);
     }
+  });
+});
+
+describe('abort classification', () => {
+  it('classifies an AbortError as cancelled, not as a retryable server error', () => {
+    // This is what escapes the SSE read loop when the caller aborts: a raw
+    // DOMException that never passes through the adapter's HTTP error handling.
+    const err = fromTransportError(new DOMException('The operation was aborted.', 'AbortError'), 'anthropic');
+
+    expect(err.kind).toBe('cancelled');
+    // The consequence that matters: a cancelled request must NOT be retried,
+    // or pressing Stop kicks off a fresh generation on the next provider.
+    expect(err.retryable).toBe(false);
+  });
+
+  it('still classifies a genuine transport failure as a retryable server error', () => {
+    const err = fromTransportError(new Error('socket hang up'), 'openai');
+
+    expect(err.kind).toBe('server_error');
+    expect(err.retryable).toBe(true);
   });
 });

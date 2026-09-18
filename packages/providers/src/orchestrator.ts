@@ -1,9 +1,9 @@
 import {
   ProviderError,
   computeCostUsd,
+  fromTransportError,
   fitToContextWindow,
   getModel,
-  isProviderError,
   loadConfig,
   withRetry,
   type CompletionRequest,
@@ -100,6 +100,8 @@ export async function* streamCompletion(opts: StreamOptions): AsyncGenerator<Orc
     let finishReason: FinishReason = 'stop';
     let retryCount = 0;
     let emittedContent = false;
+    // Needed to price an aborted stream — see the cancelled branch below.
+    let streamedChars = 0;
 
     try {
       const provider = await getProvider(model.provider);
@@ -148,6 +150,8 @@ export async function* streamCompletion(opts: StreamOptions): AsyncGenerator<Orc
           if (ttftMs === null) ttftMs = Date.now() - startedAt;
           emittedContent = true;
         }
+        if (event.type === 'text_delta') streamedChars += event.text.length;
+        if (event.type === 'reasoning_delta') streamedChars += event.text.length;
         if (event.type === 'usage') usage = event.usage;
         if (event.type === 'done') finishReason = event.finishReason;
 
@@ -180,14 +184,47 @@ export async function* streamCompletion(opts: StreamOptions): AsyncGenerator<Orc
       };
       return;
     } catch (e) {
-      const err = isProviderError(e)
-        ? e
-        : new ProviderError({ kind: 'server_error', provider: model.provider, message: String(e), raw: e });
+      // fromTransportError, not a blanket server_error. An abort thrown from
+      // inside the SSE read loop never passes through the adapter's own error
+      // handling, so it arrived here as a raw DOMException and got labelled
+      // server_error — which is RETRYABLE, meaning a user pressing Stop before
+      // the first token would silently retry and then fall back to the next
+      // provider, starting a whole new generation they had just cancelled.
+      const err = fromTransportError(e, model.provider);
       lastError = err;
 
       // A user-initiated cancel is not a failure to fall back from.
       if (err.kind === 'cancelled') {
         yield { type: 'error', error: err.toClient() };
+
+        // Still emit metrics. None of the three providers sends a final usage
+        // message when you abort mid-stream, so `usage` is all zeros here — but
+        // the tokens generated before the abort were still generated and still
+        // billed. Dropping the record entirely would make cancelled spend
+        // invisible, which is worse than an approximation: estimate the output
+        // from what we actually streamed and mark the row as cancelled so
+        // nobody mistakes it for a measured figure.
+        const estimated: Usage =
+          usage.outputTokens === 0 && streamedChars > 0
+            ? { ...usage, outputTokens: estimateTokensFromChars(streamedChars) }
+            : usage;
+
+        yield {
+          type: 'metrics',
+          metrics: {
+            modelId,
+            provider: model.provider,
+            ttftMs,
+            totalMs: Date.now() - startedAt,
+            usage: estimated,
+            costUsd: computeCostUsd(estimated, model.pricing),
+            finishReason: 'error',
+            retryCount,
+            fallbackFrom: i > 0 ? chain[0]! : null,
+            droppedMessages: fitted.droppedCount,
+            errorKind: 'cancelled',
+          },
+        };
         return;
       }
 
@@ -243,6 +280,15 @@ export async function* streamCompletion(opts: StreamOptions): AsyncGenerator<Orc
     },
   };
 }
+
+/** estimateTokens() takes text; we only kept a character count, so apply the
+ *  same ratio directly rather than materializing a dummy string. */
+function estimateTokensFromChars(chars: number): number {
+  return Math.ceil(chars / CHARS_PER_TOKEN_APPROX);
+}
+
+/** Matches the ratio in @polyglot/core's estimateTokens. */
+const CHARS_PER_TOKEN_APPROX = 3.6;
 
 function dedupe(items: string[]): string[] {
   return [...new Set(items)];
