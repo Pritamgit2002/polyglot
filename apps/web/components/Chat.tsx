@@ -55,6 +55,8 @@ export default function Chat() {
   const [tab, setTab] = useState<Tab>('usage');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // null = not naming a collection; a string = the in-progress name.
+  const [newCollection, setNewCollection] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -250,13 +252,17 @@ export default function Chat() {
     }
   }
 
-  async function createCollection() {
-    const name = prompt('Collection name');
-    if (!name) return;
+  /** Named inline rather than through window.prompt(): prompt() is blocked
+   *  outright in sandboxed iframes and embedded webviews, where it throws and
+   *  leaves the button looking simply dead. */
+  async function createCollection(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     try {
-      const created = await api.createCollection(name);
+      const created = await api.createCollection(trimmed);
       setCollections((c) => [created, ...c]);
       setCollectionId(created.id);
+      setNewCollection(null);
       setTab('retrieval');
     } catch (e) {
       setError(String((e as Error).message));
@@ -417,9 +423,36 @@ export default function Chat() {
                   ))}
                 </select>
 
-                <button className="btn" onClick={createCollection}>
-                  ＋ Collection
-                </button>
+                {newCollection === null ? (
+                  <button className="btn" onClick={() => setNewCollection('')}>
+                    ＋ Collection
+                  </button>
+                ) : (
+                  <>
+                    <input
+                      className="input"
+                      autoFocus
+                      placeholder="Collection name"
+                      value={newCollection}
+                      style={{ width: 150 }}
+                      onChange={(e) => setNewCollection(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void createCollection(newCollection);
+                        if (e.key === 'Escape') setNewCollection(null);
+                      }}
+                      onBlur={() => {
+                        if (!newCollection.trim()) setNewCollection(null);
+                      }}
+                    />
+                    <button
+                      className="btn"
+                      onClick={() => void createCollection(newCollection)}
+                      disabled={!newCollection.trim()}
+                    >
+                      Add
+                    </button>
+                  </>
+                )}
 
                 <label className="btn" style={{ cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.5 : 1 }}>
                   {uploading ? <span className="spinner" /> : '⇪'} {uploading ? 'Indexing…' : 'Upload'}
