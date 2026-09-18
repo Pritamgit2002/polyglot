@@ -80,9 +80,15 @@ DeepSeek's separate `reasoning_content` — driven by config rather than code, a
 `models.json` plus a key. That is the extensibility claim, demonstrated rather
 than asserted.
 
-> **Live-key testing:** _[Update this line before submitting.]_ Fill in which
-> providers you exercised against real keys and which were verified only by
-> fixture test. Do not claim more than you ran.
+> **Live-key testing:**
+
+| Config id | Display name | Provider |
+| --- | --- | --- |
+| `anthropic:claude-sonnet-4-6` | Claude Sonnet 4.6 | Anthropic |
+| `anthropic:claude-haiku-4-5` | Claude Haiku 4.5 | Anthropic |
+| `google:gemini-2.5-flash` | Gemini 2.5 Flash | Google |
+| `google:gemini-2.5-pro` | Gemini 2.5 Pro | Google |
+| `openai:gpt-5.6-luna` | GPT-5.6 Luna | OpenAI |
 
 ### Modules
 
