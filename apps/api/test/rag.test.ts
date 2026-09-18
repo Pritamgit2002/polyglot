@@ -55,3 +55,25 @@ describe('grounding', () => {
     expect(prompt).toContain('UNTRUSTED DATA');
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('conversation titles', () => {
+  it('uses the first user message, trimmed on a word boundary', async () => {
+    const { deriveTitle } = await import('../src/services/chat.js');
+
+    expect(deriveTitle([{ type: 'text', text: 'What is our refund policy?' }])).toBe('What is our refund policy?');
+    expect(deriveTitle([{ type: 'text', text: '  multiple   spaces\n\ncollapse ' }])).toBe('multiple spaces collapse');
+
+    const long = deriveTitle([{ type: 'text', text: 'Summarize the attached contract and list every obligation that falls on us' }]);
+    expect(long.length).toBeLessThanOrEqual(61);
+    expect(long.endsWith('…')).toBe(true);
+    expect(long).not.toMatch(/\s…$/); // no dangling space before the ellipsis
+    expect(long.slice(0, -1).split(' ').pop()).not.toBe('oblig'); // not cut mid-word
+  });
+
+  it('falls back to the placeholder for an image-only message', async () => {
+    const { deriveTitle } = await import('../src/services/chat.js');
+    expect(deriveTitle([{ type: 'image', mimeType: 'image/png', data: 'AAAA' }])).toBe('New conversation');
+  });
+});

@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import {
   conversations,
   messages as messagesTable,
@@ -60,7 +60,17 @@ export async function* runChatTurn(opts: ChatTurnOptions): AsyncGenerator<Client
     });
     await tx
       .update(conversations)
-      .set({ updatedAt: new Date(), lastModelId: opts.modelId })
+      .set({
+        updatedAt: new Date(),
+        lastModelId: opts.modelId,
+        // Title the conversation from its first user message, but only while it
+        // is still the placeholder — a CASE rather than a conditional WHERE, so
+        // one statement covers both the naming and the timestamp bump and a
+        // user's own rename is never clobbered.
+        title: sql`case when ${conversations.title} = 'New conversation'
+                        then ${deriveTitle(opts.userContent)}
+                        else ${conversations.title} end`,
+      })
       .where(eq(conversations.id, opts.conversationId));
 
     return tx
@@ -248,6 +258,29 @@ async function logMetrics(opts: ChatTurnOptions, metrics: RequestMetrics[]): Pro
       })),
     ),
   );
+}
+
+const DEFAULT_TITLE = 'New conversation';
+
+/**
+ * A readable label from the first user turn. Falls back to the placeholder for
+ * an image-only message, so the picker never shows an empty row.
+ */
+export function deriveTitle(content: ContentBlock[]): string {
+  const text = content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!text) return DEFAULT_TITLE;
+  // Cut on a word boundary when there is one nearby, so titles do not end
+  // mid-word.
+  if (text.length <= 60) return text;
+  const cut = text.slice(0, 60);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
 function dedupeChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
