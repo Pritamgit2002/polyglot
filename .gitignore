@@ -11,3 +11,9 @@ out/
 coverage/
 uploads/
 *.tsbuildinfo
+
+# This repo uses npm workspaces. A stray bun.lock (some tools emit one) would
+# give Turborepo and CI two conflicting sources of truth.
+bun.lock
+yarn.lock
+pnpm-lock.yaml
