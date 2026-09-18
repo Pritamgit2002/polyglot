@@ -363,7 +363,7 @@ export default function Chat() {
 
       <div className="side">
         <Citations citations={citations} />
-        <MetricsPanel refreshKey={turns.length} />
+        <MetricsPanel refreshKey={turns.length} tenant={tenant} />
       </div>
     </div>
   );

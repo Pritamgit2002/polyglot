@@ -6,18 +6,32 @@ import { api, type MetricsSummary, type RequestLog } from '@/lib/api';
 /** Module E: cost and latency, per request and aggregated by provider. Both
  *  endpoints are tenant-scoped by RLS, so this panel can only ever show the
  *  current tenant's spend. */
-export default function MetricsPanel({ refreshKey }: { refreshKey: number }) {
+export default function MetricsPanel({ refreshKey, tenant }: { refreshKey: number; tenant: string }) {
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
   const [requests, setRequests] = useState<RequestLog[]>([]);
 
   useEffect(() => {
+    // `tenant` is in the dependency list, and the panel is blanked before the
+    // refetch. Without both, switching tenant leaves the previous tenant's
+    // spend on screen — the server scopes correctly, but a stale client still
+    // looks exactly like a leak, which is the one thing this app must not do.
+    setSummary(null);
+    setRequests([]);
+
+    let cancelled = false;
     Promise.all([api.metricsSummary(), api.metricsRequests()])
       .then(([s, r]) => {
+        // A slow response for the OLD tenant must not land after a switch.
+        if (cancelled) return;
         setSummary(s);
         setRequests(r.slice(0, 12));
       })
       .catch(() => {});
-  }, [refreshKey]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, tenant]);
 
   return (
     <>
