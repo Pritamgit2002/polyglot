@@ -157,6 +157,26 @@ different tenant's index.
   comparison `NULL`, which denies. **Forgetting to call `withTenant()` returns
   zero rows, not every row.** The failure mode points the safe way.
 
+**One deliberate exception: `tenants` and `tenant_access_log` are control-plane
+tables.** Both have RLS *enabled* but *not forced*, so the owner role can still
+administer them. This is not a loosening — it is a necessity. Provisioning a
+tenant, and resolving an inbound identifier to a tenant, both happen *before*
+any tenant context exists; you cannot scope a lookup by the thing you are
+looking up. Forcing RLS on `tenants` deadlocks the system: the seed cannot
+insert, and the middleware's lookup returns zero rows, 401ing every request.
+(I found this by running it, not by reasoning about it.) The app role is instead
+constrained by `GRANT`: on `tenants` it has `SELECT` only, policy-limited to its
+own row; on `tenant_access_log` it has `INSERT` only, so it cannot read others'
+entries, amend its own, or erase evidence.
+
+**This is tested, not asserted.** `packages/db/test/isolation.test.ts` connects
+as `polyglot_app` and proves: no context yields zero rows; a pinned context
+yields only that tenant's rows from a query with no `WHERE`; another tenant's
+row is invisible *even when requested by primary key*; an `INSERT` claiming a
+different `tenant_id` is rejected by `WITH CHECK`; the setting does not survive
+onto the next transaction on a pooled connection; and the app role cannot
+`DISABLE ROW LEVEL SECURITY` or create a tenant.
+
 ### A new engineer joins on Monday and writes a query. What stops them?
 
 Postgres does.

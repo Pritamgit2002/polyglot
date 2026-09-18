@@ -7,13 +7,29 @@ every request costs and how long it took.
 
 ## Setup (under 5 minutes)
 
-**Prerequisites:** Node 20+, and Postgres 14+ with the `pgvector` extension.
+**Prerequisites:** Node 20+, and Postgres 14+ with `pgvector` available.
 
 ```bash
 git clone <this-repo> && cd polyglot
 npm install
 cp .env.example .env          # then fill in at least one provider key
-npm run db:push               # extensions, tables, roles, RLS policies, vector index
+```
+
+Create the database and its owner role, and install the extensions. The
+extensions step needs a **superuser**, because the app's owner role is
+deliberately *not* one — a superuser bypasses row-level security outright,
+which would hollow out the entire tenant model:
+
+```bash
+psql -d postgres -c "CREATE ROLE polyglot LOGIN PASSWORD 'polyglot' CREATEROLE CREATEDB;"
+createdb -O polyglot polyglot
+psql -d polyglot -c "CREATE EXTENSION vector; CREATE EXTENSION pgcrypto;"
+```
+
+Then:
+
+```bash
+npm run db:push               # tables, the polyglot_app role, RLS policies, HNSW index
 npm run db:seed               # creates the "acme" and "globex" demo tenants
 npm run dev                   # api on :3001, web on :3000
 ```
@@ -21,25 +37,25 @@ npm run dev                   # api on :3001, web on :3000
 Open <http://localhost:3000>.
 
 **No Postgres handy?** `docker compose up -d` starts one with pgvector
-preinstalled, matching the default `DATABASE_URL`.
-
-**On macOS with Homebrew Postgres:**
-
-```bash
-brew install pgvector && brew services start postgresql@18
-createdb polyglot && createuser -s polyglot
-```
+preinstalled, matching the default `DATABASE_URL`. **macOS/Homebrew:**
+`brew install pgvector && brew services restart postgresql@18` before the
+`CREATE EXTENSION` step above.
 
 ### Verify without touching a provider
 
 ```bash
-npm test            # 43 tests, all adapter behaviour against mocked HTTP
+npm test            # 50 tests
 npm run check-types
 npm run verify      # resolves every configured provider to its adapter, prints the cost maths
 ```
 
 The adapter tests use recorded request/response fixtures, so they prove the
 request and response mapping is correct with **no API keys and no network**.
+
+`packages/db/test/isolation.test.ts` is the exception: 7 integration tests that
+connect as `polyglot_app` and try what a careless engineer would — reading
+another tenant's row by id, inserting under someone else's `tenant_id`, turning
+RLS off. They skip automatically when `DATABASE_APP_URL` is unset.
 
 ---
 
