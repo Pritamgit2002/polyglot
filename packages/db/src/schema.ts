@@ -140,8 +140,10 @@ export const requestLogs = pgTable(
     outputTokens: integer('output_tokens').notNull().default(0),
     cachedInputTokens: integer('cached_input_tokens'),
     reasoningTokens: integer('reasoning_tokens'),
-    /** numeric, not float: money in a float is how you get $0.30000000000000004. */
-    costUsd: numeric('cost_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+    /** numeric, not float: money in a float is how you get $0.30000000000000004.
+     *  8dp because a cheap model's per-request cost is ~$0.00008 — at 6dp that
+     *  is one significant figure and the truncation biases the aggregate low. */
+    costUsd: numeric('cost_usd', { precision: 16, scale: 8 }).notNull().default('0'),
     finishReason: text('finish_reason').notNull(),
     retryCount: integer('retry_count').notNull().default(0),
     fallbackFrom: text('fallback_from'),

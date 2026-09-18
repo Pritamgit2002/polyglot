@@ -252,7 +252,7 @@ async function logMetrics(opts: ChatTurnOptions, metrics: RequestMetrics[]): Pro
         outputTokens: m.usage.outputTokens,
         cachedInputTokens: m.usage.cachedInputTokens ?? null,
         reasoningTokens: m.usage.reasoningTokens ?? null,
-        costUsd: m.costUsd.toFixed(6),
+        costUsd: m.costUsd.toFixed(8),
         finishReason: m.finishReason,
         retryCount: m.retryCount,
         fallbackFrom: m.fallbackFrom,

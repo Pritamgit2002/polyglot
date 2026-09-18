@@ -209,9 +209,20 @@ export function computeCostUsd(usage: Usage, pricing: Pricing): number {
   // provider we implement, so we do NOT add them again.
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMTok * outMult;
 
-  return round6(inputCost + cachedCost + writeCost + outputCost);
+  return round8(inputCost + cachedCost + writeCost + outputCost);
 }
 
-function round6(n: number): number {
-  return Math.round(n * 1e6) / 1e6;
+/**
+ * 8 decimal places, not 6.
+ *
+ * A short request to a cheap model costs ~$0.00008. At 6dp that is one
+ * significant figure, and because rounding a positive number to a coarse grid
+ * truncates as often as it rounds up, the error does not cancel across a
+ * ledger — it shows up as a systematically wrong total in the aggregate view,
+ * which is the number Module E exists to report. The request_logs column is
+ * numeric(16,8) to match; storing at lower precision than we compute would
+ * put the rounding back.
+ */
+function round8(n: number): number {
+  return Math.round(n * 1e8) / 1e8;
 }

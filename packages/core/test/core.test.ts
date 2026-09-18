@@ -62,6 +62,26 @@ describe('long-context pricing', () => {
     expect(cost).toBeCloseTo((300_000 / 1e6) * 0.02 * 2, 6);
   });
 
+  it("reproduces Gemini 2.5 Pro's published two-tier table exactly", () => {
+    // Published 2026-09-18: $1.25 in / $10 out / $0.125 cached up to 200k,
+    // and $2.50 / $15.00 / $0.25 above it. Modelled as 2x input, 1.5x output.
+    const pro = {
+      inputPerMTok: 1.25,
+      outputPerMTok: 10,
+      cachedInputPerMTok: 0.125,
+      longContext: { thresholdInputTokens: 200_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+    };
+
+    // 1M tokens at each rate makes the per-MTok price directly readable.
+    expect(computeCostUsd({ inputTokens: 1_000_000, outputTokens: 0 }, { ...pro, longContext: undefined })).toBeCloseTo(1.25, 6);
+    expect(computeCostUsd({ inputTokens: 1_000_000, outputTokens: 0 }, pro)).toBeCloseTo(2.5, 6);
+    expect(computeCostUsd({ inputTokens: 300_000, outputTokens: 1_000_000 }, pro)).toBeCloseTo(0.3 * 2.5 + 15, 6);
+    // The cached rate doubles too: $0.125 -> $0.25.
+    expect(
+      computeCostUsd({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 1_000_000 }, pro),
+    ).toBeCloseTo(0.25, 6);
+  });
+
   it('is a no-op for a model with no long-context tier', () => {
     const flat = { inputPerMTok: 3, outputPerMTok: 15 };
     expect(computeCostUsd({ inputTokens: 500_000, outputTokens: 1_000 }, flat)).toBeCloseTo(1.5 + 0.015, 6);
