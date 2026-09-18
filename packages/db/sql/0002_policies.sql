@@ -55,18 +55,37 @@ BEGIN
 END
 $$;
 
--- The tenants table itself is readable only for the current tenant's own row.
+-- ---------------------------------------------------------------------------
+-- `tenants` is a CONTROL-PLANE table, and is handled differently on purpose.
+--
+-- Provisioning a tenant, and resolving an inbound identifier to a tenant, both
+-- happen BEFORE any tenant context exists — you cannot scope a lookup by the
+-- thing you are looking up. So RLS is ENABLEd (the app role sees only its own
+-- row) but NOT FORCEd, leaving the owner role able to administer the table.
+--
+-- FORCE here would deadlock the system: the owner could not seed a tenant, and
+-- the middleware's slug lookup would return zero rows, 401ing every request.
+-- The app role is instead locked down by GRANT: it can read its own row and
+-- nothing else, and it cannot create, rename or delete a tenant at all.
+-- ---------------------------------------------------------------------------
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tenants FORCE ROW LEVEL SECURITY;
+ALTER TABLE tenants NO FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_self ON tenants;
-CREATE POLICY tenant_self ON tenants USING (id = current_tenant_id());
+CREATE POLICY tenant_self ON tenants FOR SELECT USING (id = current_tenant_id());
+REVOKE INSERT, UPDATE, DELETE ON tenants FROM polyglot_app;
 
--- Access log is append-only from the app role: it is the audit trail, so the
--- app must not be able to rewrite it.
+-- ---------------------------------------------------------------------------
+-- The access log is the audit trail, so the app role may append to it and
+-- nothing else — it must not be able to read other tenants' entries, edit its
+-- own, or erase evidence. NOT FORCEd so an operator (owner) can actually read
+-- the trail; an audit log nobody can query is not an audit log.
+-- ---------------------------------------------------------------------------
 ALTER TABLE tenant_access_log ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tenant_access_log FORCE ROW LEVEL SECURITY;
+ALTER TABLE tenant_access_log NO FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS access_log_insert ON tenant_access_log;
 CREATE POLICY access_log_insert ON tenant_access_log FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS access_log_read_own ON tenant_access_log;
+CREATE POLICY access_log_read_own ON tenant_access_log FOR SELECT USING (tenant_id = current_tenant_id());
 REVOKE UPDATE, DELETE ON tenant_access_log FROM polyglot_app;
 
 -- Vector index. Cosine because our embeddings are normalized; HNSW because

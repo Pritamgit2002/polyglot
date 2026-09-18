@@ -21,11 +21,30 @@ if (!url) {
 
 const sqlFile = (name: string) => readFileSync(fileURLToPath(new URL(`../sql/${name}`, import.meta.url)), 'utf8');
 
-const owner = postgres(url, { max: 1 });
+// Silence NOTICEs: 'DROP POLICY IF EXISTS ... skipping' on a first run is
+// expected and drowns out real output.
+const owner = postgres(url, { max: 1, onnotice: () => {} });
 
 try {
   console.log('→ extensions');
-  await owner.unsafe(sqlFile('0000_extensions.sql'));
+  try {
+    await owner.unsafe(sqlFile('0000_extensions.sql'));
+  } catch (e) {
+    // CREATE EXTENSION needs a superuser, and the owner role is deliberately
+    // NOT one: a superuser bypasses RLS outright, which would hollow out the
+    // whole tenant-isolation model. Managed Postgres (Neon, RDS) pre-installs
+    // these for the same reason, so this only bites on a local database.
+    if (String(e).includes('permission denied to create extension')) {
+      console.error(
+        `\n✗ "${url!.split('/').pop()}" is missing the vector extension, and the app's owner role is` +
+          '\n  not a superuser (on purpose — a superuser bypasses row-level security).' +
+          '\n\n  Install it once as a superuser:\n' +
+          `\n    psql -d ${url!.split('/').pop()?.split('?')[0]} -c 'CREATE EXTENSION vector; CREATE EXTENSION pgcrypto;'\n`,
+      );
+      process.exit(1);
+    }
+    throw e;
+  }
 
   console.log('→ tables (drizzle-kit push)');
   execSync('npx drizzle-kit push --force', { stdio: 'inherit', env: process.env });

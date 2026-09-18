@@ -8,8 +8,9 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "db:push": "tsx src/push.ts",
-    "db:seed": "tsx src/seed.ts"
+    "db:push": "tsx --env-file-if-exists=../../.env src/push.ts",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/seed.ts",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "drizzle-orm": "^0.38.2",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "drizzle-kit": "^0.30.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
