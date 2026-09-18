@@ -45,15 +45,30 @@ export function chunkText(input: string, settings: Pick<RetrievalSettings, 'chun
   const out: Chunk[] = [];
   let buffer = '';
   let ordinal = 0;
+
+  // Two separate cursors. `heading` is the most recent heading seen while
+  // scanning; `chunkHeading` is the one in force when the CURRENT chunk began.
+  // Using the scanning cursor at flush time labels a chunk with the LAST
+  // heading it happens to contain, so a chunk that opens under "Equipment
+  // budget" and runs into "Travel" gets cited as Travel — a citation that
+  // points at the wrong section is worse than no citation at all.
   let heading: string | null = null;
+  let chunkHeading: string | null = null;
 
   const flush = () => {
     const text = buffer.trim();
     if (!text) return;
-    out.push({ text, ordinal: ordinal++, locator: heading });
+    out.push({ text, ordinal: ordinal++, locator: chunkHeading });
     // Carry the tail forward so a fact spanning a boundary survives in one of
     // the two chunks rather than being cut in half in both.
     buffer = settings.chunkOverlap > 0 ? text.slice(-settings.chunkOverlap) : '';
+    // The overlap tail belongs to the section the next chunk opens in.
+    chunkHeading = heading;
+  };
+
+  const append = (piece: string, joiner: string) => {
+    if (!buffer) chunkHeading = heading;
+    buffer += (buffer ? joiner : '') + piece;
   };
 
   for (const para of paragraphs) {
@@ -64,13 +79,13 @@ export function chunkText(input: string, settings: Pick<RetrievalSettings, 'chun
       // A single oversized paragraph: fall back to sentence boundaries.
       for (const sentence of para.split(/(?<=[.!?])\s+/)) {
         if (buffer.length + sentence.length > settings.chunkSize) flush();
-        buffer += (buffer ? ' ' : '') + sentence;
+        append(sentence, ' ');
       }
       continue;
     }
 
     if (buffer.length + para.length + 2 > settings.chunkSize) flush();
-    buffer += (buffer ? '\n\n' : '') + para;
+    append(para, '\n\n');
   }
 
   flush();

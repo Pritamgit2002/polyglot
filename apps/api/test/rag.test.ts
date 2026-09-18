@@ -24,6 +24,27 @@ describe('chunking', () => {
     expect(chunks[0]!.locator).toBe('Billing Policy');
   });
 
+  it('labels a chunk with the heading it OPENS under, not the last one it contains', () => {
+    // A chunk spanning two sections must cite the section its content starts
+    // in. Labelling it with the last heading seen points the reader at the
+    // wrong part of the document, which is worse than not citing at all.
+    const doc = ['# Equipment budget', 'The hardware budget is $2,450.', '# Travel', 'Hotel cap is $260.'].join('\n\n');
+    const chunks = chunkText(doc, { chunkSize: 4000, chunkOverlap: 0 });
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]!.text).toContain('2,450');
+    expect(chunks[0]!.locator).toBe('Equipment budget');
+  });
+
+  it('moves the locator forward once a later chunk opens in a new section', () => {
+    const doc = ['# Alpha', 'a'.repeat(160), '# Beta', 'b'.repeat(160)].join('\n\n');
+    const chunks = chunkText(doc, { chunkSize: 200, chunkOverlap: 0 });
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]!.locator).toBe('Alpha');
+    expect(chunks[chunks.length - 1]!.locator).toBe('Beta');
+  });
+
   it('returns nothing for an empty document rather than one empty chunk', () => {
     expect(chunkText('   \n\n  ', settings)).toEqual([]);
   });
