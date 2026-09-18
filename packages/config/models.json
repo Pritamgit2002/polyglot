@@ -1,14 +1,17 @@
 {
   "$comment": [
     "Models, capabilities and prices live here, never in code.",
-    "Prices are USD per million tokens, taken from each vendor's public pricing",
-    "page - see docs/PROVIDER_NOTES.md for the URL and the date each was read.",
-    "VERIFY THESE BEFORE SUBMITTING: vendors change prices without notice.",
+    "",
+    "VERIFIED 2026-09-18 against each vendor's published pricing page, with token",
+    "limits taken from the providers' own APIs. Sources in docs/PROVIDER_NOTES.md.",
+    "",
+    "Anthropic cacheWritePerMTok is the 5-minute TTL rate (the default). The",
+    "1-hour TTL costs more ($6/MTok on Sonnet 4.6, $2/MTok on Haiku 4.5); we do",
+    "not request it, so it is not modelled.",
     "",
     "Scope: Anthropic, Gemini and OpenAI. Groq and DeepSeek also speak the",
-    "openai-compat adapter and its tests cover their two quirks (x_groq.usage,",
-    "reasoning_content), but they are NOT shipped as configured providers -",
-    "enabling either is one entry here plus its API key, with no code change."
+    "openai-compat adapter and its tests cover their two quirks, but they are NOT",
+    "shipped - enabling either is one entry here plus its API key, no code change."
   ],
   "providers": {
     "anthropic": {
@@ -35,8 +38,8 @@
       "provider": "anthropic",
       "providerModelId": "claude-sonnet-4-6",
       "displayName": "Claude Sonnet 4.6",
-      "contextWindow": 200000,
-      "maxOutputTokens": 64000,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
       "capabilities": {
         "tools": true,
         "vision": true,
@@ -55,7 +58,7 @@
       "providerModelId": "claude-haiku-4-5",
       "displayName": "Claude Haiku 4.5",
       "contextWindow": 200000,
-      "maxOutputTokens": 32000,
+      "maxOutputTokens": 64000,
       "capabilities": {
         "tools": true,
         "vision": true,
@@ -84,7 +87,7 @@
       "pricing": {
         "inputPerMTok": 0.3,
         "outputPerMTok": 2.5,
-        "cachedInputPerMTok": 0.075
+        "cachedInputPerMTok": 0.03
       }
     },
     "google:gemini-2.5-pro": {
@@ -102,7 +105,12 @@
       "pricing": {
         "inputPerMTok": 1.25,
         "outputPerMTok": 10.0,
-        "cachedInputPerMTok": 0.31
+        "cachedInputPerMTok": 0.125,
+        "longContext": {
+          "thresholdInputTokens": 200000,
+          "inputMultiplier": 2,
+          "outputMultiplier": 1.5
+        }
       }
     },
     "openai:gpt-5.6-luna": {
